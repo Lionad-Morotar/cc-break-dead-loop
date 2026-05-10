@@ -100,7 +100,7 @@ describe('integration: stdin/stdout protocol', () => {
     assert.strictEqual(parsed.continue, true);
   });
 
-  it('PreToolUse:Read 计数器 >= 5 → stdout 返回 deny 阻断', async () => {
+  it('PreToolUse:Read 计数器 >= 5 → deny + additionalContext 双重保险', async () => {
     // 先通过 PostToolUse 写入 5 次 wasted call 状态
     const input = {
       tool_name: 'Read',
@@ -123,9 +123,11 @@ describe('integration: stdin/stdout protocol', () => {
     assert.strictEqual(result.code, 0);
     const parsed = JSON.parse(result.stdout);
     assert.strictEqual(parsed.continue, false);
+    // deny 阻断主 agent
     assert.strictEqual(parsed.hookSpecificOutput.permissionDecision, 'deny');
     assert.ok(parsed.hookSpecificOutput.permissionDecisionReason.includes('cc-break-dead-loop'));
-    assert.ok(parsed.hookSpecificOutput.permissionDecisionReason.includes('文件未改动'));
+    // additionalContext 引导 subagent/teammate
+    assert.ok(parsed.hookSpecificOutput.additionalContext.includes('立即停止'));
   });
 
   it('无效 event 名称 → stdout 返回 { continue: true }', async () => {

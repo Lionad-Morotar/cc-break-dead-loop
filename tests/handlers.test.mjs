@@ -165,7 +165,7 @@ describe('preToolUseRead', () => {
     assert.strictEqual(result.hookSpecificOutput.permissionDecision, 'allow');
   });
 
-  it('计数器 = 5，参数匹配 → 返回 deny 阻断', () => {
+  it('计数器 = 5，参数匹配 → deny + additionalContext 双重保险', () => {
     writeTestState(5);
 
     const result = preToolUseRead(baseInput);
@@ -173,9 +173,12 @@ describe('preToolUseRead', () => {
     assert.strictEqual(result.continue, false);
     assert.ok(result.hookSpecificOutput);
     assert.strictEqual(result.hookSpecificOutput.hookEventName, 'PreToolUse');
+    // deny 对主 agent 有效
     assert.strictEqual(result.hookSpecificOutput.permissionDecision, 'deny');
     assert.ok(result.hookSpecificOutput.permissionDecisionReason.includes('cc-break-dead-loop'));
-    assert.ok(result.hookSpecificOutput.permissionDecisionReason.includes('文件未改动'));
+    // additionalContext 对 subagent/teammate 生效
+    assert.ok(result.hookSpecificOutput.additionalContext.includes('cc-break-dead-loop'));
+    assert.ok(result.hookSpecificOutput.additionalContext.includes('立即停止'));
   });
 
   it('计数器 = 5，但 Read 参数已变化 → 放行（D7）', () => {
@@ -189,13 +192,18 @@ describe('preToolUseRead', () => {
     assert.deepStrictEqual(result, { continue: true, suppressOutput: true });
   });
 
-  it('阻断文案明确包含 "文件未改动" 相关提示', () => {
+  it('deny reason 和 additionalContext 内容一致且包含关键要素', () => {
     writeTestState(5);
 
     const result = preToolUseRead(baseInput);
 
     const reason = result.hookSpecificOutput.permissionDecisionReason;
-    assert.ok(reason.includes('文件未改动'));
-    assert.ok(reason.includes('请使用之前的读取结果') || reason.includes('不要再重复 Read'));
+    const ctx = result.hookSpecificOutput.additionalContext;
+    // 两者使用同一文案
+    assert.strictEqual(reason, ctx);
+    assert.ok(ctx.includes('死循环'));
+    assert.ok(ctx.includes('立即停止 Read'));
+    assert.ok(ctx.includes('文件未改动'));
+    assert.ok(ctx.includes('汇报'));
   });
 });

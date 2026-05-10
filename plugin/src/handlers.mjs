@@ -120,8 +120,10 @@ export function preToolUseRead(input) {
   const count = state.consecutiveWastedReads || 0;
 
   if (count >= BLOCK_THRESHOLD) {
-    // 阻断 — 使用官方 hookSpecificOutput + permissionDecision: deny 格式
-    const reason = `[cc-break-dead-loop] 检测到 Read 死循环：已连续 ${count} 次读取文件「${params.filePath}」，每次返回「文件未改动」。请使用之前的读取结果，不要再重复 Read 同一文件。`;
+    // 双重保险：deny 阻断主 agent + additionalContext 引导 subagent/teammate
+    // deny 对主 agent 有效，subagent/teammate 无视 deny（#25000/#34692）
+    // additionalContext 对所有 agent 类型均生效，引导 subagent 主动停止
+    const reason = `[cc-break-dead-loop] 死循环检测：已连续 ${count} 次读取「${params.filePath}」且文件未改动。立即停止 Read 该文件，使用之前已有的内容。如果你是子 agent，请向主 agent 汇报此问题。`;
     return {
       continue: false,
       suppressOutput: false,
@@ -129,6 +131,7 @@ export function preToolUseRead(input) {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
         permissionDecisionReason: reason,
+        additionalContext: reason,
       },
     };
   }
