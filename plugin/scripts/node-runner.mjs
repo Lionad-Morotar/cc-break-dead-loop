@@ -3,7 +3,7 @@
  * D3: 内部异常时 graceful fallback（异常时 exit 0 + { continue: true }）
  */
 
-import { main } from '../../src/index.mjs';
+import { main } from '../src/index.mjs';
 
 const event = process.argv[2];
 let data = '';

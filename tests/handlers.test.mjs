@@ -5,8 +5,8 @@ import {
   isWastedCall,
   postToolUse,
   preToolUseRead,
-} from '../src/handlers.mjs';
-import { getStateDir, writeState } from '../src/state.mjs';
+} from '../plugin/src/handlers.mjs';
+import { getStateDir, writeState } from '../plugin/src/state.mjs';
 
 const baseInput = {
   tool_name: 'Read',

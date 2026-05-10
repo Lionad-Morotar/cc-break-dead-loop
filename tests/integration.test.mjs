@@ -179,7 +179,7 @@ describe('integration: setup-check.mjs', () => {
 describe('integration: index.mjs CLI', () => {
   it('直接运行 index.mjs post-tool-use → 正确处理 stdin', async () => {
     const result = await runWithStdin(
-      [join(projectRoot, 'src/index.mjs'), 'post-tool-use'],
+      [join(projectRoot, 'plugin/src/index.mjs'), 'post-tool-use'],
       JSON.stringify({
         tool_name: 'Read',
         cwd: '/tmp',
