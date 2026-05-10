@@ -1,0 +1,39 @@
+{
+  "name": "cc-break-dead-loop",
+  "version": "0.1.0",
+  "description": "Claude Code 插件：自动检测并打断 agent 对同一未改动文件的连续 Read 死循环",
+  "type": "module",
+  "bin": {
+    "cc-break-dead-loop": "./src/cli/index.mjs"
+  },
+  "files": [
+    "src/",
+    "plugin/",
+    ".claude-plugin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs tests/**/*.test.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lionad-Morotar/cc-break-dead-loop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lionad-Morotar/cc-break-dead-loop/issues"
+  },
+  "homepage": "https://github.com/Lionad-Morotar/cc-break-dead-loop#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "dead-loop",
+    "read-deduplication"
+  ],
+  "author": "仿生狮子",
+  "license": "MIT"
+}

@@ -1,0 +1,17 @@
+node_modules/
+*.log
+.DS_Store
+*.swp
+*.swo
+*~
+
+# 插件运行时状态数据（按会话隔离，不提交到仓库）
+~/.data/
+
+# 测试临时文件
+tmp/
+temp/
+
+# IDE
+.vscode/
+.idea/

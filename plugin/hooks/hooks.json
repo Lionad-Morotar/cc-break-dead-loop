@@ -1,0 +1,19 @@
+{
+  "hooks": [
+    {
+      "hook": "Setup",
+      "matcher": "*",
+      "command": "bash -c 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd \"$(dirname \"$0\")/../..\" && pwd)}; node \"$PLUGIN_ROOT/plugin/scripts/setup-check.mjs\"'"
+    },
+    {
+      "hook": "PostToolUse",
+      "matcher": "Read",
+      "command": "bash -c 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd \"$(dirname \"$0\")/../..\" && pwd)}; node \"$PLUGIN_ROOT/plugin/scripts/node-runner.mjs\" post-tool-use'"
+    },
+    {
+      "hook": "PreToolUse",
+      "matcher": "Read",
+      "command": "bash -c 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd \"$(dirname \"$0\")/../..\" && pwd)}; node \"$PLUGIN_ROOT/plugin/scripts/node-runner.mjs\" pre-tool-use-read'"
+    }
+  ]
+}
