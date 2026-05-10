@@ -1,21 +1,21 @@
 # External Integrations
 
-**Analysis Date:** 2026-05-10
+**Analysis Date:** 2026-05-11
 
 ## APIs & External Services
 
 **Claude Code Plugin API：**
 - Claude Code Hook 系统 — 插件通过 stdin/stdout JSON 协议与 Claude Code 主进程通信
   - 协议格式：Claude Code 向插件 stdin 注入 JSON 数据，插件向 stdout 输出 JSON 响应
-  - 响应格式：`{ continue: boolean, suppressOutput?: boolean, hookSpecificOutput?: Object, systemMessage?: string }`
-  - 阻断信号：`shouldBlock: true` 时插件以 exit code 2 退出，stdout 输出 `{ systemMessage: "..." }`
+  - 响应格式：`{ continue: boolean, suppressOutput?: boolean, hookSpecificOutput?: Object }`
+  - 阻断信号：`{ continue: false, hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason, additionalContext } }`（官方 Anthropic hook 格式）
   - SDK/Client：无（纯 stdin/stdout 协议，无 SDK 依赖）
 
 **Git：**
 - 本地 Git 命令 — 用于解析项目仓库名（`git remote get-url origin`）
   - 调用方式：`spawnSync('git', ['remote', 'get-url', 'origin'], { cwd, encoding: 'utf8', timeout: 5000 })`
   - 完全可选：Git 不可用时自动 fallback 到当前工作目录文件夹名
-  - 使用文件：`src/utils.mjs`
+  - 使用文件：`plugin/src/utils.mjs`
 
 ## Data Storage
 
@@ -27,7 +27,7 @@
   - 根目录：`~/.data/cc-break-dead-loop/`
   - 路径结构：`~/.data/cc-break-dead-loop/<safe-project-name>/<session-id>/<safe-agent-name>/state.json`
   - 写入策略：原子写入（`writeFile(tmp) → rename(tmp, dest)`）避免并发损坏
-  - 使用文件：`src/state.mjs`
+  - 使用文件：`plugin/src/state.mjs`
 
 **Caching：**
 - 无 — 状态文件即为唯一持久化层，无额外缓存机制
@@ -83,4 +83,4 @@
 
 ---
 
-*Integration audit: 2026-05-10*
+*Integration audit: 2026-05-11*

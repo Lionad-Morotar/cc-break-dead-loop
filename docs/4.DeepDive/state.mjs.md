@@ -2,7 +2,7 @@
 
 ## 概述
 
-`src/state.mjs` 负责插件的核心状态持久化：读写状态文件、原子写入、计数器逻辑、参数比较。它是 PostToolUse 和 PreToolUse:Read 两个 handler 之间的**唯一通信渠道**。
+`plugin/src/state.mjs` 负责插件的核心状态持久化：读写状态文件、原子写入、计数器逻辑、参数比较。它是 PostToolUse 和 PreToolUse:Read 两个 handler 之间的**唯一通信渠道**。
 
 ## 状态文件生命周期
 
@@ -56,6 +56,8 @@ export function getStateDir(cwd, sessionId, agentId, _agentType) {
 - **project**：同一用户可能同时打开多个项目，避免跨项目干扰
 - **session**：Claude Code 会话间状态不累积（D4 决策：不跨会话）
 - **agent**：子代理和主代理的 Read 行为独立，主代理的读取不应被子代理的死循环影响
+
+**注意**：独立 agent_id → 独立状态计数。不同 agent 各自维护计数器，互不影响。
 
 ### 安全化规则
 
@@ -192,17 +194,17 @@ interface DetectionState {
 
 ## 测试覆盖
 
-`tests/state.test.mjs` 包含 20 项断言：
+`tests/state.test.mjs` 包含完整的状态管理测试：
 
-| 测试组 | 断言 | 场景 |
-|--------|------|------|
-| `sanitizeName` | 4 | 保留字符/去除首尾连字符/空结果 fallback/截断 |
-| `getProjectName` | 3 | git 仓库/无 git 目录/空路径 |
-| `getStateDir` | 2 | 正确路径/agent_id 为空时用 main |
-| `writeState` | 1 | 自动创建目录 |
-| `readState` | 2 | 正确读取/文件不存在返回 null |
-| `incrementCounter` | 4 | 连续递增/参数变化重置/undefined vs 0/并发安全 |
-| `isSameReadParams` | 4 | 相同/不同/undefined vs 0/null |
+| 测试组 | 场景 |
+|--------|------|
+| `sanitizeName` | 保留字符/去除首尾连字符/空结果 fallback/截断 |
+| `getProjectName` | git 仓库/无 git 目录/空路径 |
+| `getStateDir` | 正确路径/agent_id 为空时用 main |
+| `writeState` | 自动创建目录 |
+| `readState` | 正确读取/文件不存在返回 null |
+| `incrementCounter` | 连续递增/参数变化重置/undefined vs 0/并发安全 |
+| `isSameReadParams` | 相同/不同/undefined vs 0/null |
 
 **并发测试**：
 ```javascript

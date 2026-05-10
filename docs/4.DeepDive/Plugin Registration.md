@@ -12,6 +12,12 @@ plugin/
 │   └── plugin.json          # 插件元数据
 ├── hooks/
 │   └── hooks.json           # Hook 注册配置
+├── src/                     # 核心源码
+│   ├── index.mjs            # Hook 入口
+│   ├── config.mjs           # 配置常量
+│   ├── handlers.mjs         # 双 Handler
+│   ├── state.mjs            # 状态管理
+│   └── utils.mjs            # 工具函数
 └── scripts/
     ├── node-runner.mjs      # PostToolUse/PreToolUse 运行时
     └── setup-check.mjs      # Setup 环境检测
@@ -22,10 +28,14 @@ plugin/
 ```json
 {
   "name": "cc-break-dead-loop",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Claude Code 插件：自动检测并打断 agent 对同一未改动文件的连续 Read 死循环",
-  "author": "仿生狮子",
-  "license": "MIT"
+  "author": {
+    "name": "仿生狮子"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Lionad-Morotar/cc-break-dead-loop",
+  "homepage": "https://github.com/Lionad-Morotar/cc-break-dead-loop#readme"
 }
 ```
 
@@ -35,23 +45,41 @@ plugin/
 
 ```json
 {
-  "hooks": [
-    {
-      "hook": "Setup",
-      "matcher": "*",
-      "command": "bash -c 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd \"$(dirname \"$0\")/../..\" && pwd)}; node \"$PLUGIN_ROOT/plugin/scripts/setup-check.mjs\"'"
-    },
-    {
-      "hook": "PostToolUse",
-      "matcher": "Read",
-      "command": "bash -c 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd \"$(dirname \"$0\")/../..\" && pwd)}; node \"$PLUGIN_ROOT/plugin/scripts/node-runner.mjs\" post-tool-use'"
-    },
-    {
-      "hook": "PreToolUse",
-      "matcher": "Read",
-      "command": "bash -c 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd \"$(dirname \"$0\")/../..\" && pwd)}; node \"$PLUGIN_ROOT/plugin/scripts/node-runner.mjs\" pre-tool-use-read'"
-    }
-  ]
+  "hooks": {
+    "Setup": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/setup-check.mjs\"'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs\" post-tool-use'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs\" pre-tool-use-read'"
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -66,26 +94,26 @@ plugin/
 ### 动态路径解析（D2 决策）
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
+node "${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs"
 ```
 
 **逻辑**：
-1. 优先检查 `CLAUDE_PLUGIN_ROOT` 环境变量（开发时使用）
-2. 否则从脚本路径向上推算插件根目录：`scripts/` → `plugin/` → 项目根目录
+- `CLAUDE_PLUGIN_ROOT` 由 Claude Code 自动设置为插件根目录（`plugin/`）
+- 所有脚本通过该变量定位，无需硬编码绝对路径
 
-这避免了硬编码绝对路径，使插件可以从任意安装位置加载。
+这使插件可以从任意安装位置加载。
 
 ### 为什么用 bash 而非直接写 node 命令？
 
 bash 层负责：
-1. **动态解析插件根目录**：不同用户的安装路径不同
-2. **环境变量支持**：开发时通过 `CLAUDE_PLUGIN_ROOT` 覆盖
-3. **路径规范化**：`cd && pwd` 确保得到绝对路径
+1. **环境变量展开**：`${CLAUDE_PLUGIN_ROOT}` 需要 shell 展开
+2. **路径规范化**：确保得到正确的绝对路径
+3. **兼容性**：Claude Code hook command 字段要求 shell 命令
 
 ## node-runner.mjs — 运行时包装
 
 ```javascript
-import { main } from '../../src/index.mjs';
+import { main } from '../src/index.mjs';
 
 const event = process.argv[2];
 let data = '';
@@ -101,10 +129,6 @@ async function finish() {
   clearTimeout(timeout);
   try {
     const result = await main(event, data);
-    if (result?.shouldBlock) {
-      console.log(JSON.stringify({ systemMessage: result.systemMessage }));
-      process.exit(2);
-    }
     console.log(JSON.stringify(result));
     process.exit(0);
   } catch {
@@ -130,19 +154,12 @@ const timeout = setTimeout(() => { finish(); }, 5000);
 **Graceful Fallback（D3）**：
 任何异常都输出 `{ continue: true }` 并 exit(0)，确保插件问题不阻断正常 Read。
 
-**阻断标记处理**：
-```javascript
-if (result?.shouldBlock) {
-  console.log(JSON.stringify({ systemMessage: result.systemMessage }));
-  process.exit(2);
-}
-```
-
-阻断时只输出 `systemMessage` 字段，exit code 2 是 Claude Code 的 blocking error 语义。
+**统一结果透传**：
+当前版本不再在 runner 层处理 `shouldBlock`，而是将 handler 返回的完整结构（含 `hookSpecificOutput`）直接 JSON.stringify 输出。Claude Code 根据 `permissionDecision` 字段自行决定是否阻断。
 
 ### 为什么需要 runner 层？
 
-`node-runner.mjs` 是 Claude Code Hook 协议与 `src/index.mjs` 之间的**适配层**：
+`node-runner.mjs` 是 Claude Code Hook 协议与 `plugin/src/index.mjs` 之间的**适配层**：
 - Claude Code 通过 `command` 字段 spawn 子进程，stdin 注入 JSON
 - runner 负责收集 stdin、调用 `main()`、处理输出格式
 - runner 提供第一层错误边界，与 `index.mjs` 的第二层形成冗余防护
@@ -184,24 +201,54 @@ process.exit(0);  // 无论检测结果如何
 
 ## 安装机制
 
-```mermaid
-flowchart LR
-  A[plugin/ 目录] --> B[复制到]
-  B --> C[~/.claude/plugins/cc-break-dead-loop/]
-  C --> D[Claude Code 启动]
-  D --> E[读取 plugin.json]
-  D --> F[读取 hooks.json]
-  F --> G[注册 Hook]
-  G --> H[触发 Setup]
-  H --> I[setup-check.mjs]
-```
+### 方式一：Marketplace 安装（推荐）
 
-### 开发模式
-
-通过 `CLAUDE_PLUGIN_ROOT` 环境变量，开发时无需反复复制：
+通过 Claude Code 的 marketplace 机制安装：
 
 ```bash
-export CLAUDE_PLUGIN_ROOT=/path/to/cc-break-dead-loop
+# 在 Claude Code CLI 中
+/plugins add lionad-morotar
 ```
 
-`hooks.json` 中的 bash 命令会优先使用该路径。
+Marketplace 配置由项目根目录 `.claude-plugin/marketplace.json` 定义。
+
+### 方式二：NPX CLI 安装
+
+```bash
+npx cc-break-dead-loop install
+```
+
+安装流程：
+
+```mermaid
+flowchart TD
+  A[npx cc-break-dead-loop install] --> B[检测 Claude Code 配置目录]
+  B --> C[复制 plugin/ 到 marketplace 目录]
+  C --> D[注册到 known_marketplaces.json]
+  D --> E[注册到 installed_plugins.json]
+  E --> F[启用插件 settings.json]
+  F --> G[输出安装成功信息]
+```
+
+该命令执行以下步骤：
+1. 检测 Claude Code 配置目录是否存在
+2. 复制 `plugin/` 到 `~/.claude/marketplace/lionad-morotar/plugin/`
+3. 注册 marketplace 到 `known_marketplaces.json`
+4. 注册插件到 `installed_plugins.json`
+5. 启用插件（写入 `settings.json` 的 `enabledPlugins`）
+
+### 方式三：手动安装
+
+```bash
+mkdir -p ~/.claude/plugins/cc-break-dead-loop
+cp -r plugin/* ~/.claude/plugins/cc-break-dead-loop/
+```
+
+### 其他 CLI 命令
+
+```bash
+npx cc-break-dead-loop status           # 查看安装状态
+npx cc-break-dead-loop uninstall        # 卸载插件
+npx cc-break-dead-loop uninstall --purge  # 卸载并删除 marketplace 目录
+npx cc-break-dead-loop version          # 显示版本号
+```

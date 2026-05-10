@@ -1,6 +1,6 @@
 # 编码规范
 
-**分析日期:** 2026-05-10
+**分析日期:** 2026-05-11
 
 ## 命名模式
 
@@ -83,7 +83,7 @@ try {
 ```
 
 **双重错误边界:**
-- 第一层：`src/index.mjs` 的 `main()` 函数 try/catch
+- 第一层：`plugin/src/index.mjs` 的 `main()` 函数 try/catch
 - 第二层：`plugin/scripts/node-runner.mjs` 的 `finish()` 函数 try/catch
 - 第三层：CLI 入口的 `process.stdin.on('error', ...)`
 
@@ -107,7 +107,7 @@ try {
 
 **返回值:**
 - 明确返回结构化对象，统一使用 `{ continue: boolean, suppressOutput: boolean }` 作为基础响应
-- 特殊响应添加额外字段，如 `{ shouldBlock: true, systemMessage: string }`
+- 特殊响应添加额外字段，如 `{ continue: false, hookSpecificOutput: { permissionDecision: 'deny', permissionDecisionReason, additionalContext } }`
 
 ## 模块设计
 
@@ -124,4 +124,4 @@ try {
 
 ---
 
-*规范分析: 2026-05-10*
+*规范分析: 2026-05-11*

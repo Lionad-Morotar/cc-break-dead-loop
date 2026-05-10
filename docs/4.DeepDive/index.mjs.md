@@ -2,17 +2,17 @@
 
 ## 概述
 
-`src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、事件分发、以及统一错误边界。它被两处调用：
+`plugin/src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、事件分发、以及统一错误边界。它被两处调用：
 
-1. **CLI 入口**：`node src/index.mjs <event>`（通过 stdin 接收 JSON 数据）
-2. **模块入口**：`import { main } from '../src/index.mjs'`（由 `node-runner.mjs` 使用）
+1. **模块入口**：`import { main } from '../src/index.mjs'`（由 `plugin/scripts/node-runner.mjs` 使用）
+2. **CLI 入口**：`node plugin/src/index.mjs <event>`（通过 stdin 接收 JSON 数据，开发调试用）
 
 ## 职责
 
 - 解析 stdin 注入的 JSON（HookInput）
 - 根据 event 名称分发到对应 handler
 - **统一错误边界**：任何内部错误都返回 `{ continue: true }` 静默失败
-- 处理阻断标记（`shouldBlock`），在 CLI 模式下触发 `process.exit(2)`
+- 透传 handler 结果（含 `hookSpecificOutput` 的完整结构）
 
 ## 架构
 
@@ -21,15 +21,13 @@ flowchart TD
   A[stdin JSON] --> B{JSON.parse}
   B -->|成功| C{event}
   B -->|失败| D[返回 { continue: true }]
-  C -->|post-tool-use| E[postToolUse(input)]
-  C -->|pre-tool-use-read| F[preToolUseRead(input)]
+  C -->|post-tool-use| E[postToolUse input]
+  C -->|pre-tool-use-read| F[preToolUseRead input]
   C -->|其他| D
-  E --> G{result.shouldBlock?}
+  E --> G{result}
   F --> G
-  G -->|是| H[console.log systemMessage]
-  G -->|是| I[process.exit(2)]
-  G -->|否| J[console.log result]
-  G -->|否| K[process.exit(0)]
+  G --> J[console.log JSON.stringify result]
+  J --> K[process.exit 0]
   E -->|异常| D
   F -->|异常| D
 ```
@@ -76,10 +74,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   process.stdin.on('end', async () => {
     try {
       const result = await main(event, data);
+
+      // 检查旧版阻断标记（向后兼容）
       if (result?.shouldBlock) {
         console.log(JSON.stringify({ systemMessage: result.systemMessage }));
         process.exit(2);
       }
+
       console.log(JSON.stringify(result));
       process.exit(0);
     } catch {
@@ -98,8 +99,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 **设计要点**：
 - `import.meta.url === file://${process.argv[1]}` 判断是否为直接运行（非 import）
-- 阻断时只输出 `{ systemMessage }`，不含其他字段
-- `process.exit(2)` 对应 Claude Code 的 blocking error 语义
+- CLI 入口保留 `shouldBlock` 检查用于向后兼容
+- 当前 handler 使用 `hookSpecificOutput` 结构返回结果，`node-runner.mjs` 统一处理
 - `stdin.on('error')` 处理 stdin 流异常（如管道断裂）
 
 ## 输入/输出契约
@@ -122,7 +123,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 |------|----------|
 | 正常放行 | `{ "continue": true, "suppressOutput": true }` |
 | 注入警告 | `{ "continue": true, "suppressOutput": false, "hookSpecificOutput": { "hookEventName": "PreToolUse", "additionalContext": "...", "permissionDecision": "allow" } }` |
-| 阻断 | `{ "systemMessage": "检测到 Read 死循环..." }` + exit(2) |
+| 强制阻断 | `{ "continue": false, "suppressOutput": false, "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "...", "additionalContext": "..." } }` |
 | 错误降级 | `{ "continue": true, "suppressOutput": true }` |
 
 ## 错误边界设计

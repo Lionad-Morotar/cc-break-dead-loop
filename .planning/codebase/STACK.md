@@ -1,6 +1,6 @@
 # Technology Stack
 
-**Analysis Date:** 2026-05-10
+**Analysis Date:** 2026-05-11
 
 ## Languages
 
@@ -41,16 +41,16 @@
 **Infrastructure（内置模块使用清单）：**
 | 模块 | 用途 | 使用文件 |
 |------|------|----------|
-| `node:fs` | 状态文件读写、目录创建 | `src/state.mjs` |
-| `node:path` | 路径拼接、目录名提取 | `src/state.mjs`、`src/utils.mjs` |
-| `node:child_process` | Git 仓库名解析（`spawnSync`）、子进程集成测试 | `src/utils.mjs`、`tests/integration.test.mjs` |
+| `node:fs` | 状态文件读写、目录创建 | `plugin/src/state.mjs` |
+| `node:path` | 路径拼接、目录名提取 | `plugin/src/state.mjs`、`plugin/src/utils.mjs` |
+| `node:child_process` | Git 仓库名解析（`spawnSync`）、子进程集成测试 | `plugin/src/utils.mjs`、`tests/integration.test.mjs` |
 | `node:os` | 临时目录获取（测试用） | `tests/state.test.mjs` |
 | `node:url` | `fileURLToPath` 转换（测试用） | `tests/integration.test.mjs` |
 
 ## Configuration
 
 **Environment：**
-- `HOME` / `USERPROFILE` — 状态数据根目录定位（`src/config.mjs`）
+- `HOME` / `USERPROFILE` — 状态数据根目录定位（`plugin/src/config.mjs`）
 - `CLAUDE_PLUGIN_ROOT` — 开发时覆盖插件根目录路径，避免复制到 `~/.claude/plugins/`（`plugin/hooks/hooks.json`）
 
 **Build：**
@@ -58,7 +58,7 @@
 
 **Plugin Metadata：**
 - `plugin/.claude-plugin/plugin.json` — 插件元数据（名称、版本、描述）
-- `plugin/hooks/hooks.json` — Hook 注册配置（Setup、PostToolUse、PreToolUse）
+- `plugin/hooks/hooks.json` — Hook 注册配置（Setup、PostToolUse、PreToolUse），record 格式按事件名分组
 
 ## Platform Requirements
 
@@ -72,4 +72,4 @@
 
 ---
 
-*Stack analysis: 2026-05-10*
+*Stack analysis: 2026-05-11*
