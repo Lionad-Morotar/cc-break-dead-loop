@@ -1,10 +1,14 @@
 {
   "name": "lionad-morotar",
+  "owner": {
+    "name": "仿生狮子",
+    "url": "https://github.com/Lionad-Morotar"
+  },
   "plugins": [
     {
       "name": "cc-break-dead-loop",
-      "source": "./plugin",
-      "version": "0.1.0"
+      "description": "Claude Code 插件：自动检测并打断 agent 对同一未改动文件的连续 Read 死循环",
+      "source": "./plugin"
     }
   ]
 }
