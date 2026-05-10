@@ -2,7 +2,7 @@
 
 ## 概述
 
-`src/handlers.mjs` 实现插件的**核心检测与拦截逻辑**，包含两个互补的 handler：
+`plugin/src/handlers.mjs` 实现插件的**核心检测与拦截逻辑**，包含两个互补的 handler：
 
 | Handler | 职责 | 触发时机 |
 |---------|------|----------|
@@ -33,8 +33,8 @@ flowchart TD
     K -->|否| C2
     K -->|是| L{count >= ?}
     L -->|< 3| C2
-    L -->|3-4| M[return additionalContext]
-    L -->|>= 5| N[return shouldBlock]
+    L -->|3-4| M[return additionalContext + allow]
+    L -->|>= 5| N[return deny + additionalContext]
   end
 ```
 
@@ -48,7 +48,7 @@ export function postToolUse(input) {
   const toolName = input?.tool_name;
   if (toolName !== 'Read') return { continue: true, suppressOutput: true };
 
-  // 2. 检测 wasted call 信号
+  // 2. 检测 wasted call 信号（三层检测）
   const toolResponse = input?.tool_response;
   if (!isWastedCall(toolResponse)) return { continue: true, suppressOutput: true };
 
@@ -72,7 +72,7 @@ export function postToolUse(input) {
 - **非 wasted call**：正常 Read 占多数，次快短路
 - **缺少 file_path**：异常情况，静默跳过
 
-### isWastedCall() — 多模式检测
+### isWastedCall() — 三层检测
 
 ```javascript
 export function isWastedCall(toolResponse) {
@@ -80,6 +80,10 @@ export function isWastedCall(toolResponse) {
     return toolResponse.includes('Wasted call');
   }
   if (toolResponse && typeof toolResponse === 'object') {
+    // Claude Code 实际返回格式: { type: "file_unchanged", file: { filePath } }
+    if (toolResponse.type === 'file_unchanged') {
+      return true;
+    }
     if (typeof toolResponse.content === 'string' && 
         toolResponse.content.includes('Wasted call')) {
       return true;
@@ -94,11 +98,11 @@ export function isWastedCall(toolResponse) {
 **为什么需要三层检测？**（D6 决策）
 
 Claude Code 的 `toolResponse` 格式可能在不同版本中变化：
-1. **字符串**：最常见，直接包含提示文本
-2. **对象含 `content`**：某些版本可能包装为 `{ content: "..." }`
-3. **`JSON.stringify` 兜底**：对象嵌套深层时，序列化后全文搜索
+1. **字符串**：`"Wasted call — file unchanged"` — 兼容旧版
+2. **`file_unchanged` 对象**：`{ type: "file_unchanged", file: { filePath } }` — Claude Code **实际返回格式**，优先检测
+3. **`content` 对象 + `JSON.stringify` 兜底**：`{ content: "Wasted call..." }` 或嵌套对象序列化后搜索
 
-性能影响：`JSON.stringify` 仅在字符串和 `content` 字段都不匹配时执行，正常路径开销极小。
+性能影响：`file_unchanged` 检测是 O(1) 属性访问，`JSON.stringify` 仅在前两层都不匹配时执行，正常路径开销极小。
 
 ## preToolUseRead() — 拦截 Read
 
@@ -120,9 +124,18 @@ export function preToolUseRead(input) {
   const count = state.consecutiveWastedReads || 0;
 
   if (count >= BLOCK_THRESHOLD) {
-    // 强制阻断
-    const message = `[cc-break-dead-loop] 检测到 Read 死循环：已连续 ${count} 次读取文件「${params.filePath}」，每次返回「文件未改动」。请使用之前的读取结果，不要再重复 Read 同一文件。`;
-    return { shouldBlock: true, systemMessage: message };
+    // 双重阻断保险：deny + additionalContext
+    const reason = `[cc-break-dead-loop] 死循环检测：已连续 ${count} 次读取「${params.filePath}」且文件未改动。立即停止 Read 该文件，使用之前已有的内容。如果你是子 agent，请向主 agent 汇报此问题。`;
+    return {
+      continue: false,
+      suppressOutput: false,
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: reason,
+        additionalContext: reason,
+      },
+    };
   }
 
   if (count >= WARN_THRESHOLD) {
@@ -147,34 +160,37 @@ export function preToolUseRead(input) {
 | 计数 | 行为 | 目的 |
 |------|------|------|
 | 1-2 | 完全静默 | 避免干扰正常操作 |
-| 3-4 | 注入 `additionalContext` | 提醒 agent 注意，但不阻断 |
-| >= 5 | 强制阻断（exit 2） | 阻止死循环继续 |
+| 3-4 | 注入 `additionalContext` + `permissionDecision: 'allow'` | 提醒 agent 注意，但不阻断 |
+| >= 5 | `permissionDecision: 'deny'` + `additionalContext` 双重阻断 | 阻止死循环继续 |
 
 **为什么 3 次警告、5 次阻断？**
 
 - **3 次**：agent 可能确实需要重新确认文件内容（如文件刚被外部修改）
 - **5 次**：超过合理重试次数，确认为死循环
 
-### additionalContext 注入
+### 双重阻断保险机制
 
-`additionalContext` 是 Claude Code PreToolUse Hook 的特殊字段，用于向 agent 提供额外上下文而不阻断操作：
+阻断时返回结构包含两种机制：
 
 ```javascript
 hookSpecificOutput: {
   hookEventName: 'PreToolUse',
-  additionalContext: '⚠️ 警告文案...',
-  permissionDecision: 'allow',  // 明确允许执行
+  permissionDecision: 'deny',          // 主 agent 强制阻断
+  permissionDecisionReason: reason,     // 阻断原因
+  additionalContext: reason,            // 所有 agent 类型都能看到
 }
 ```
 
-`permissionDecision: 'allow'` 告诉 Claude Code 这个 Read 请求被允许继续执行，但 agent 会看到警告信息。
+- **`permissionDecision: 'deny'`**：对主 agent 强制阻断 Read 操作，主 agent 无法继续执行该 Read
+- **`additionalContext`**：对所有 agent 类型（含 subagent/teammate）注入引导文案，即使 agent 无视 deny 也能看到停止提示
+- **两者同时使用**：覆盖已知 subagent/teammate 无视 `deny` 的 Claude Code bug（#25000, #34692）
 
 ### 阻断文案设计
 
-阻断时的 `systemMessage` 包含三个关键信息：
+阻断时的文案包含三个关键信息：
 1. **插件标识**：`[cc-break-dead-loop]` — 明确来源
 2. **问题描述**：已连续 N 次读取同一文件，文件未改动
-3. **行动指引**：请使用之前的读取结果，不要再重复 Read
+3. **行动指引**：立即停止 Read 该文件，使用之前已有的内容；如果是子 agent，向主 agent 汇报
 
 文案使用中文，因为目标用户（插件使用者）主要使用中文环境。
 
@@ -202,8 +218,8 @@ function extractReadParams(input) {
 
 | 测试领域 | 断言数 | 关键场景 |
 |----------|--------|----------|
-| `isWastedCall` | 6 | 字符串/对象 content/嵌套对象/非对象 |
-| `postToolUse` | 6 | 正常内容/非 Read/缺少 file_path/三种 wasted call 模式 |
-| `preToolUseRead` | 6 | 放行/警告/阻断/参数变化放行/文案验证 |
+| `isWastedCall` | 8+ | 字符串 / `file_unchanged` 对象 / content 对象 / 嵌套对象 / null / 数字 |
+| `postToolUse` | 6+ | 正常内容/非 Read/缺少 file_path/三种 wasted call 格式 |
+| `preToolUseRead` | 6+ | 放行/警告/双重阻断/参数变化放行/文案验证 |
 
 **测试数据隔离**：使用 `baseInput` 固定参数模板，每个测试通过不同的 `session_id` 和 `agent_id` 隔离状态文件，避免交叉污染。

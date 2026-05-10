@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-05-10
+**Analysis Date:** 2026-05-11
 
 ## Pattern Overview
 
@@ -23,46 +23,46 @@
 - Used by: Claude Code 运行时
 
 **Runner Layer:**
-- Purpose: 收集 stdin，调用核心逻辑，处理阻断标记，graceful fallback
+- Purpose: 收集 stdin，调用核心逻辑，透传 JSON 响应，graceful fallback
 - Location: `plugin/scripts/node-runner.mjs`
-- Contains: stdin 收集（含 5s 超时）、main() 调用、异常降级处理
-- Depends on: `src/index.mjs`
+- Contains: stdin 收集（含 5s 超时）、main() 调用、直接透传返回 JSON、异常降级处理
+- Depends on: `../src`（即 `plugin/src/index.mjs`）
 - Used by: `plugin/hooks/hooks.json` 通过 bash 命令调用
 
 **Entry Layer:**
 - Purpose: stdin/stdout 协议处理、handler 分发、统一错误边界
-- Location: `src/index.mjs`
+- Location: `plugin/src/index.mjs`
 - Contains: `main(event, stdinData)` 函数、CLI 入口、JSON 解析、event 分发
-- Depends on: `src/handlers.mjs`
+- Depends on: `plugin/src/handlers.mjs`
 - Used by: `plugin/scripts/node-runner.mjs` 和直接 CLI 调用
 
 **Handler Layer:**
 - Purpose: 实现 PostToolUse 检测和 PreToolUse:Read 拦截的业务逻辑
-- Location: `src/handlers.mjs`
+- Location: `plugin/src/handlers.mjs`
 - Contains: `postToolUse(input)`、`preToolUseRead(input)`、参数提取、阈值判断
-- Depends on: `src/state.mjs`、`src/config.mjs`
-- Used by: `src/index.mjs`
+- Depends on: `plugin/src/state.mjs`、`plugin/src/config.mjs`
+- Used by: `plugin/src/index.mjs`
 
 **State Management Layer:**
 - Purpose: 检测状态的持久化读写、原子写入、计数器逻辑
-- Location: `src/state.mjs`
+- Location: `plugin/src/state.mjs`
 - Contains: `getStateDir()`、`readState()`、`writeState()`、`incrementCounter()`、`isSameReadParams()`
-- Depends on: `src/config.mjs`、`src/utils.mjs`
-- Used by: `src/handlers.mjs`
+- Depends on: `plugin/src/config.mjs`、`plugin/src/utils.mjs`
+- Used by: `plugin/src/handlers.mjs`
 
 **Utility Layer:**
 - Purpose: 路径安全化和 Git 仓库名解析
-- Location: `src/utils.mjs`
+- Location: `plugin/src/utils.mjs`
 - Contains: `sanitizeName()`、`getProjectName()`
 - Depends on: Node.js 内置模块（`child_process`、`path`）
-- Used by: `src/state.mjs`
+- Used by: `plugin/src/state.mjs`
 
 **Configuration Layer:**
 - Purpose: 定义阈值常量和数据目录路径
-- Location: `src/config.mjs`
+- Location: `plugin/src/config.mjs`
 - Contains: `WARN_THRESHOLD`、`BLOCK_THRESHOLD`、`DATA_DIR`
 - Depends on: 无
-- Used by: `src/handlers.mjs`、`src/state.mjs`
+- Used by: `plugin/src/handlers.mjs`、`plugin/src/state.mjs`
 
 ## Data Flow
 
@@ -81,7 +81,7 @@
 3. `plugin/scripts/node-runner.mjs` 收集 stdin 中的 HookInput JSON
 4. 调用 `src/index.mjs` 的 `main('post-tool-use', stdinData)`
 5. `main()` 解析 JSON，分发到 `postToolUse(input)`
-6. `postToolUse()` 检测 `tool_response` 是否包含 "Wasted call"（多模式：字符串 / 对象 content / JSON.stringify 兜底）
+6. `postToolUse()` 检测 `tool_response` 是否包含 wasted call 标记（多模式：字符串 "Wasted call" / `{ type: "file_unchanged" }` 对象 / JSON.stringify 兜底）
 7. 若命中 wasted call，提取 `file_path`/`offset`/`limit`，调用 `incrementCounter()`
 8. `incrementCounter()` 读取 `state.json`，比较参数（`===` 直接比较，不规范化 undefined→0）
 9. 参数相同则递增计数器，不同则重置为 1
@@ -97,9 +97,20 @@
 5. `main()` 分发到 `preToolUseRead(input)`
 6. `preToolUseRead()` 提取 Read 参数，读取当前状态
 7. 若状态不存在或参数不匹配 → 放行 `{ continue: true, suppressOutput: true }`
-8. 若 `consecutiveWastedReads >= BLOCK_THRESHOLD(5)` → 返回阻断标记
-9. `node-runner.mjs` 检测到 `shouldBlock`，输出 `{ systemMessage }` 到 stdout，exit(2)
-10. 若 `consecutiveWastedReads >= WARN_THRESHOLD(3)` → 返回 `{ hookSpecificOutput: { additionalContext, permissionDecision: 'allow' } }`
+8. 若 `consecutiveWastedReads >= BLOCK_THRESHOLD(5)` → 返回官方 Anthropic hook 阻断格式：
+   ```javascript
+   {
+     continue: false,
+     hookSpecificOutput: {
+       hookEventName: 'PreToolUse',
+       permissionDecision: 'deny',
+       permissionDecisionReason: reason,
+       additionalContext: reason  // 双重保险：deny 对主 agent 生效，additionalContext 对 subagent/teammate 引导
+     }
+   }
+   ```
+9. `node-runner.mjs` 直接透传 main() 返回的 JSON 到 stdout（不再处理 shouldBlock/exit(2)）
+10. 若 `consecutiveWastedReads >= WARN_THRESHOLD(3)` → 返回 `{ continue: true, hookSpecificOutput: { additionalContext, permissionDecision: 'allow' } }`
 11. 否则 → 放行
 
 **State Management Flow:**
@@ -133,8 +144,8 @@
 **HookResult:**
 - Purpose: Handler 返回给 Claude Code 的处理结果
 - 普通放行: `{ continue: true, suppressOutput: true }`
-- 警告注入: `{ continue: true, suppressOutput: false, hookSpecificOutput: { hookEventName, additionalContext, permissionDecision } }`
-- 阻断标记: `{ shouldBlock: true, systemMessage }`（由 runner 转换为 exit code 2）
+- 警告注入: `{ continue: true, suppressOutput: false, hookSpecificOutput: { hookEventName, additionalContext, permissionDecision: 'allow' } }`
+- 阻断: `{ continue: false, hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason, additionalContext } }`（官方 Anthropic hook 格式，deny 对主 agent 生效，additionalContext 对所有 agent 类型引导）
 
 ## Entry Points
 
@@ -144,14 +155,14 @@
 - Responsibilities: 注册 Hook 匹配器和执行命令
 
 **CLI Entry (Direct Execution):**
-- Location: `src/index.mjs`（`import.meta.url === file://${process.argv[1]}` 分支）
-- Triggers: `node src/index.mjs <event>` 命令行调用
-- Responsibilities: 从 process.stdin 读取数据，调用 main()，处理阻断标记，输出 JSON 到 stdout
+- Location: `plugin/src/index.mjs`（`import.meta.url === file://${process.argv[1]}` 分支）
+- Triggers: `node plugin/src/index.mjs <event>` 命令行调用
+- Responsibilities: 从 process.stdin 读取数据，调用 main()，输出 JSON 到 stdout
 
 **Runner Entry (Hook Script):**
 - Location: `plugin/scripts/node-runner.mjs`
 - Triggers: Claude Code 通过 hooks.json 的 bash 命令调用
-- Responsibilities: 收集 stdin（5s 超时保护），调用 main()，处理阻断标记和异常降级
+- Responsibilities: 收集 stdin（5s 超时保护），调用 main()，直接透传返回 JSON 和异常降级
 
 **Setup Entry:**
 - Location: `plugin/scripts/setup-check.mjs`
@@ -164,7 +175,7 @@
 
 **Patterns:**
 - **D3 (Runner Graceful Fallback):** `plugin/scripts/node-runner.mjs` 中任何异常都输出 `{ continue: true, suppressOutput: true }` 并 exit(0)
-- **D5 (Handler Error Boundary):** `src/index.mjs` 中 try/catch 包裹整个 handler 调用，任何错误都返回 `{ continue: true }`
+- **D5 (Handler Error Boundary):** `plugin/src/index.mjs` 中 try/catch 包裹整个 handler 调用，任何错误都返回 `{ continue: true }`
 - **Silent Failures:** 状态文件读取失败返回 `null`；JSON 解析失败返回默认对象；Git 命令失败静默 fallback 到文件夹名
 - **Setup Never Blocks:** `setup-check.mjs` 无论检测结果如何都 exit(0)
 
@@ -173,10 +184,10 @@
 **Logging:** 仅使用 `console.log`/`console.error` 输出到 stdout/stderr，无专用日志框架
 - Setup 检测成功: `[cc-break-dead-loop] Setup: OK (Node.js x.y.z)`
 - Setup 检测失败: stderr 输出具体错误
-- 阻断时: stdout 输出 `{ systemMessage }`
+- 阻断时: stdout 输出官方 hook JSON（含 `permissionDecision: 'deny'`）
 
 **Validation:** 无专用验证框架，使用运行时类型检查
-- `typeof toolResponse === 'string'` / `typeof toolResponse === 'object'`
+- `typeof toolResponse === 'string'` / `typeof toolResponse === 'object'`（含 `{ type: "file_unchanged" }` 检测）
 - `toolInput && typeof toolInput === 'object'`
 - 空值和缺失字段的防御性检查
 
@@ -184,4 +195,4 @@
 
 ---
 
-*Architecture analysis: 2026-05-10*
+*Architecture analysis: 2026-05-11*
