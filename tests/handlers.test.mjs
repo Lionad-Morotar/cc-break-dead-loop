@@ -165,14 +165,17 @@ describe('preToolUseRead', () => {
     assert.strictEqual(result.hookSpecificOutput.permissionDecision, 'allow');
   });
 
-  it('计数器 = 5，参数匹配 → 返回阻断标记', () => {
+  it('计数器 = 5，参数匹配 → 返回 deny 阻断', () => {
     writeTestState(5);
 
     const result = preToolUseRead(baseInput);
 
-    assert.strictEqual(result.shouldBlock, true);
-    assert.ok(result.systemMessage.includes('cc-break-dead-loop'));
-    assert.ok(result.systemMessage.includes('文件未改动'));
+    assert.strictEqual(result.continue, false);
+    assert.ok(result.hookSpecificOutput);
+    assert.strictEqual(result.hookSpecificOutput.hookEventName, 'PreToolUse');
+    assert.strictEqual(result.hookSpecificOutput.permissionDecision, 'deny');
+    assert.ok(result.hookSpecificOutput.permissionDecisionReason.includes('cc-break-dead-loop'));
+    assert.ok(result.hookSpecificOutput.permissionDecisionReason.includes('文件未改动'));
   });
 
   it('计数器 = 5，但 Read 参数已变化 → 放行（D7）', () => {
@@ -191,7 +194,8 @@ describe('preToolUseRead', () => {
 
     const result = preToolUseRead(baseInput);
 
-    assert.ok(result.systemMessage.includes('文件未改动'));
-    assert.ok(result.systemMessage.includes('请使用之前的读取结果') || result.systemMessage.includes('不要再重复 Read'));
+    const reason = result.hookSpecificOutput.permissionDecisionReason;
+    assert.ok(reason.includes('文件未改动'));
+    assert.ok(reason.includes('请使用之前的读取结果') || reason.includes('不要再重复 Read'));
   });
 });

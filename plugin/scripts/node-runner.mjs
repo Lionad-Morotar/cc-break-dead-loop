@@ -26,13 +26,6 @@ async function finish() {
   try {
     const result = await main(event, data);
 
-    // 阻断标记由 runner 处理
-    if (result?.shouldBlock) {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify({ systemMessage: result.systemMessage }));
-      process.exit(2);
-    }
-
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(result));
     process.exit(0);

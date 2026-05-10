@@ -120,9 +120,17 @@ export function preToolUseRead(input) {
   const count = state.consecutiveWastedReads || 0;
 
   if (count >= BLOCK_THRESHOLD) {
-    // 强制阻断 — 返回标记，由调用者（index.mjs）执行 process.exit(2)
-    const message = `[cc-break-dead-loop] 检测到 Read 死循环：已连续 ${count} 次读取文件「${params.filePath}」，每次返回「文件未改动」。请使用之前的读取结果，不要再重复 Read 同一文件。`;
-    return { shouldBlock: true, systemMessage: message };
+    // 阻断 — 使用官方 hookSpecificOutput + permissionDecision: deny 格式
+    const reason = `[cc-break-dead-loop] 检测到 Read 死循环：已连续 ${count} 次读取文件「${params.filePath}」，每次返回「文件未改动」。请使用之前的读取结果，不要再重复 Read 同一文件。`;
+    return {
+      continue: false,
+      suppressOutput: false,
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: reason,
+      },
+    };
   }
 
   if (count >= WARN_THRESHOLD) {

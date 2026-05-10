@@ -100,7 +100,7 @@ describe('integration: stdin/stdout protocol', () => {
     assert.strictEqual(parsed.continue, true);
   });
 
-  it('PreToolUse:Read 计数器 >= 5 → stdout 返回 systemMessage，exit code 2', async () => {
+  it('PreToolUse:Read 计数器 >= 5 → stdout 返回 deny 阻断', async () => {
     // 先通过 PostToolUse 写入 5 次 wasted call 状态
     const input = {
       tool_name: 'Read',
@@ -120,10 +120,12 @@ describe('integration: stdin/stdout protocol', () => {
 
     const result = await runRunner('pre-tool-use-read', input);
 
-    assert.strictEqual(result.code, 2);
+    assert.strictEqual(result.code, 0);
     const parsed = JSON.parse(result.stdout);
-    assert.ok(parsed.systemMessage.includes('cc-break-dead-loop'));
-    assert.ok(parsed.systemMessage.includes('文件未改动'));
+    assert.strictEqual(parsed.continue, false);
+    assert.strictEqual(parsed.hookSpecificOutput.permissionDecision, 'deny');
+    assert.ok(parsed.hookSpecificOutput.permissionDecisionReason.includes('cc-break-dead-loop'));
+    assert.ok(parsed.hookSpecificOutput.permissionDecisionReason.includes('文件未改动'));
   });
 
   it('无效 event 名称 → stdout 返回 { continue: true }', async () => {
