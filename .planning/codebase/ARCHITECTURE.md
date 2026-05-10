@@ -79,7 +79,7 @@
 1. Claude Code 执行 Read 工具，返回结果
 2. `PostToolUse` Hook 触发（matcher: Read）
 3. `plugin/scripts/node-runner.mjs` 收集 stdin 中的 HookInput JSON
-4. 调用 `src/index.mjs` 的 `main('post-tool-use', stdinData)`
+4. 调用 `plugin/src/index.mjs` 的 `main('post-tool-use', stdinData)`
 5. `main()` 解析 JSON，分发到 `postToolUse(input)`
 6. `postToolUse()` 检测 `tool_response` 是否包含 wasted call 标记（多模式：字符串 "Wasted call" / `{ type: "file_unchanged" }` 对象 / JSON.stringify 兜底）
 7. 若命中 wasted call，提取 `file_path`/`offset`/`limit`，调用 `incrementCounter()`

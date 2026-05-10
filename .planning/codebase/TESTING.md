@@ -1,6 +1,6 @@
 # 测试模式
 
-**分析日期:** 2026-05-10
+**分析日期:** 2026-05-11
 
 ## 测试框架
 
@@ -30,9 +30,9 @@ node --test tests/integration.test.mjs # 运行单个测试文件
 **结构:**
 ```
 tests/
-├── state.test.mjs         # 状态管理单元测试（20 项）
-├── handlers.test.mjs      # Handler 逻辑单元测试（18 项）
-└── integration.test.mjs   # 端到端集成测试（8 项）
+├── state.test.mjs         # 状态管理单元测试
+├── handlers.test.mjs      # Handler 逻辑单元测试（含 file_unchanged 检测、deny+additionalContext 双重保险）
+└── integration.test.mjs   # 端到端集成测试
 ```
 
 ## 测试结构
@@ -136,7 +136,7 @@ const baseInput = {
 
 **集成测试:**
 - 通过子进程运行 `node-runner.mjs` 和 `index.mjs`，模拟完整 stdin/stdout 协议
-- 验证 exit code、stdout JSON 格式、状态持久化
+- 验证 stdout JSON 格式（含 `permissionDecision: 'deny'` 阻断响应）、状态持久化
 
 ```javascript
 // tests/integration.test.mjs — 子进程集成测试模式
@@ -206,4 +206,4 @@ describe('preToolUseRead', () => {
 
 ---
 
-*测试分析: 2026-05-10*
+*测试分析: 2026-05-11*
