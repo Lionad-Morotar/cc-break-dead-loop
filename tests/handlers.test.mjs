@@ -57,6 +57,18 @@ describe('isWastedCall', () => {
     assert.strictEqual(isWastedCall(42), false);
     assert.strictEqual(isWastedCall(true), false);
   });
+
+  it('{ type: "file_unchanged" } → true（Claude Code 实际格式）', () => {
+    assert.strictEqual(isWastedCall({ type: 'file_unchanged', file: { filePath: '/a/b' } }), true);
+  });
+
+  it('{ type: "file_unchanged" } 无 file 字段 → true', () => {
+    assert.strictEqual(isWastedCall({ type: 'file_unchanged' }), true);
+  });
+
+  it('{ type: "other" } → false', () => {
+    assert.strictEqual(isWastedCall({ type: 'file_content' }), false);
+  });
 });
 
 describe('postToolUse', () => {

@@ -11,7 +11,9 @@ import {
 } from './state.mjs';
 
 /**
- * 检测 toolResponse 是否包含 "Wasted call"（D6 多模式检测）
+ * 检测 toolResponse 是否表示文件未改动
+ * - 字符串 "Wasted call" 兼容旧版
+ * - 对象 { type: "file_unchanged" } 为 Claude Code 实际返回格式
  * @param {any} toolResponse
  * @returns {boolean}
  */
@@ -20,6 +22,10 @@ export function isWastedCall(toolResponse) {
     return toolResponse.includes('Wasted call');
   }
   if (toolResponse && typeof toolResponse === 'object') {
+    // Claude Code 实际返回格式: { type: "file_unchanged", file: { filePath } }
+    if (toolResponse.type === 'file_unchanged') {
+      return true;
+    }
     if (typeof toolResponse.content === 'string' && toolResponse.content.includes('Wasted call')) {
       return true;
     }

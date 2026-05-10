@@ -84,7 +84,7 @@ describe('integration: stdin/stdout protocol', () => {
     assert.strictEqual(parsed.suppressOutput, true);
   });
 
-  it('PostToolUse wasted call → 计数器更新，返回 continue', async () => {
+  it('PostToolUse wasted call (file_unchanged) → 计数器更新，返回 continue', async () => {
     const result = await runRunner('post-tool-use', {
       tool_name: 'Read',
       cwd: '/tmp',
@@ -92,7 +92,7 @@ describe('integration: stdin/stdout protocol', () => {
       agent_id: 'agent-int-2',
       agent_type: 'planner',
       tool_input: { file_path: '/a/b', offset: 10, limit: 20 },
-      tool_response: 'Wasted call — file unchanged since your last Read',
+      tool_response: { type: 'file_unchanged', file: { filePath: '/a/b' } },
     });
 
     assert.strictEqual(result.code, 0);
@@ -114,7 +114,7 @@ describe('integration: stdin/stdout protocol', () => {
     for (let i = 0; i < 5; i++) {
       await runRunner('post-tool-use', {
         ...input,
-        tool_response: 'Wasted call — file unchanged',
+        tool_response: { type: 'file_unchanged', file: { filePath: '/a/b' } },
       });
     }
 
