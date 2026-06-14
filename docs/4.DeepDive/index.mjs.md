@@ -2,17 +2,17 @@
 
 ## 概述
 
-`plugin/src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、事件分发、以及统一错误边界。它被两处调用：
+`plugin/src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、4 事件分发、Stop 阻断、统一错误边界。它被两处调用：
 
 1. **模块入口**：`import { main } from '../src/index.mjs'`（由 `plugin/scripts/node-runner.mjs` 使用）
-2. **CLI 入口**：`node plugin/src/index.mjs <event>`（通过 stdin 接收 JSON 数据，开发调试用）
+2. **CLI 入口**：`node plugin/src/index.mjs <event>`（开发调试用）
 
 ## 职责
 
 - 解析 stdin 注入的 JSON（HookInput）
-- 根据 event 名称分发到对应 handler
+- 根据 event 名称分发到对应 handler（线 1）/ injector（线 2）
+- **Stop 阻断**：`shouldBlock` 标记 → 由调用方 `node-runner` 翻译为 `exit(2)` + stderr
 - **统一错误边界**：任何内部错误都返回 `{ continue: true }` 静默失败
-- 透传 handler 结果（含 `hookSpecificOutput` 的完整结构）
 
 ## 架构
 
@@ -20,21 +20,24 @@
 flowchart TD
   A[stdin JSON] --> B{JSON.parse}
   B -->|成功| C{event}
-  B -->|失败| D[返回 { continue: true }]
-  C -->|post-tool-use| E[postToolUse input]
-  C -->|pre-tool-use-read| F[preToolUseRead input]
+  B -->|失败| D[返回 continue:true]
+  C -->|post-tool-use| E[postToolUse（线 1 计数）]
+  C -->|pre-tool-use-read| F[preToolUseRead（线 1 拦截）]
+  C -->|post-tool-use-any| G[postToolUseAnyAlert（线 2 注入）]
+  C -->|stop| H[stopAlert（线 2 阻断）]
   C -->|其他| D
-  E --> G{result}
-  F --> G
-  G --> J[console.log JSON.stringify result]
-  J --> K[process.exit 0]
-  E -->|异常| D
-  F -->|异常| D
+  E --> R[result]
+  F --> R
+  G --> R
+  H --> R
+  R --> J[console.log JSON.stringify]
+  J --> K[exit 0]
+  R -->|shouldBlock| L[stderr.write blockingError + exit 2]
 ```
 
 ## 关键代码分析
 
-### main() 函数
+### main() 函数 — 4 事件分发
 
 ```javascript
 export async function main(event, stdinData) {
@@ -47,9 +50,13 @@ export async function main(event, stdinData) {
 
   switch (event) {
     case 'post-tool-use':
-      return postToolUse(input);
+      return postToolUse(input);          // 线 1：主 agent Read 计数
     case 'pre-tool-use-read':
-      return preToolUseRead(input);
+      return preToolUseRead(input);        // 线 1：主 agent Read 拦截
+    case 'post-tool-use-any':
+      return postToolUseAnyAlert(input);   // 线 2：子 agent 告警注入
+    case 'stop':
+      return stopAlert(input);             // 线 2：Stop 阻断
     default:
       return { continue: true, suppressOutput: true };
   }
@@ -57,51 +64,89 @@ export async function main(event, stdinData) {
 ```
 
 **设计要点**：
-- `JSON.parse` 失败时静默返回 `continue: true`（D5 错误边界）
-- `stdinData || '{}'` 处理空输入场景
-- 使用同步 `switch` 而非动态路由，因为事件类型固定且极少
+- `JSON.parse` 失败时静默返回 `continue: true`（错误边界）
+- `stdinData || '{}'` 处理空输入
+- 同步 `switch` 分发，事件类型固定
+- 线 1 事件委托 `handlers.mjs`，线 2 事件委托 `hookInjector.mjs`（经内部 `postToolUseAnyAlert` / `stopAlert` 包装）
+
+### postToolUseAnyAlert — 线 2 PostToolUse 注入
+
+```javascript
+function postToolUseAnyAlert(input) {
+  const sessionId = input?.session_id;
+  if (!sessionId) return { continue: true, suppressOutput: true };
+
+  const injection = buildInjection({
+    filePath: ALERTS_FILE,
+    sessionId,
+    event: 'PostToolUse',
+  });
+
+  if (!injection) return { continue: true, suppressOutput: true };
+
+  return {
+    continue: true,
+    suppressOutput: false,
+    hookSpecificOutput: {
+      hookEventName: 'PostToolUse',
+      additionalContext: injection.additionalContext,
+    },
+  };
+}
+```
+
+PostToolUse:`*` Hook（任意工具执行后）触发。读 `alerts.json`，若有当前 session 的子 agent 死循环告警，注入 `additionalContext` 引导主 agent 调 `TaskStopTool`。
+
+### stopAlert — 线 2 Stop 阻断
+
+```javascript
+function stopAlert(input) {
+  const sessionId = input?.session_id;
+  if (!sessionId) return { continue: true, suppressOutput: true };
+
+  const injection = buildInjection({
+    filePath: ALERTS_FILE,
+    sessionId,
+    event: 'Stop',
+  });
+
+  if (!injection) return { continue: true, suppressOutput: true };
+
+  return {
+    shouldBlock: true,
+    systemMessage: injection.blockingError,
+  };
+}
+```
+
+Stop Hook（主 agent 结束 turn）触发。若有未处理告警，返回 `{ shouldBlock, systemMessage }`。**注意**：这里不返回标准 hook JSON，而是 `shouldBlock` 标记，由调用方 `node-runner` 翻译为 `exit(2)` + stderr，触发 Claude Code 的 blockingError 机制，强制主 agent 继续 turn。
 
 ### CLI 入口
 
 ```javascript
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const event = process.argv[2];
-  let data = '';
-
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', (chunk) => { data += chunk; });
-
+  // ...stdin 收集...
   process.stdin.on('end', async () => {
     try {
       const result = await main(event, data);
 
-      // 检查旧版阻断标记（向后兼容）
+      // Stop hook 的 blockingError：exit 2 + stderr
       if (result?.shouldBlock) {
-        console.log(JSON.stringify({ systemMessage: result.systemMessage }));
+        process.stderr.write(result.systemMessage);
         process.exit(2);
       }
 
       console.log(JSON.stringify(result));
       process.exit(0);
     } catch {
-      // D5: 任何内部错误都返回 { continue: true } 静默失败
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       process.exit(0);
     }
   });
-
-  process.stdin.on('error', () => {
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
-    process.exit(0);
-  });
 }
 ```
 
-**设计要点**：
-- `import.meta.url === file://${process.argv[1]}` 判断是否为直接运行（非 import）
-- CLI 入口保留 `shouldBlock` 检查用于向后兼容
-- 当前 handler 使用 `hookSpecificOutput` 结构返回结果，`node-runner.mjs` 统一处理
-- `stdin.on('error')` 处理 stdin 流异常（如管道断裂）
+CLI 直接运行时，`shouldBlock` → `stderr.write` + `exit(2)`。
 
 ## 输入/输出契约
 
@@ -109,44 +154,43 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `tool_name` | string | 条件 | PostToolUse 时需要，如 "Read" |
-| `tool_input` | object | 条件 | PostToolUse/PreToolUse 时需要，含 `file_path`, `offset`, `limit` |
-| `tool_response` | any | 条件 | PostToolUse 时需要，Read 的返回结果 |
-| `session_id` | string | 是 | Claude Code 会话 ID |
-| `agent_id` | string | 否 | 代理 ID，空值时 fallback 为 "main" |
-| `agent_type` | string | 否 | 代理类型（如 "planner"） |
-| `cwd` | string | 是 | 当前工作目录 |
+| `tool_name` | string | 线 1 | PostToolUse/PreToolUse 时，如 "Read" |
+| `tool_input` | object | 线 1 | 含 `file_path`、`offset`、`limit` |
+| `tool_response` | any | PostToolUse:Read | Read 返回结果 |
+| `session_id` | string | 是 | 会话 ID（线 2 据此过滤告警）|
+| `agent_id` | string | 否 | 线 1 计数隔离用，空值 fallback "main" |
+| `cwd` | string | 线 1 | 项目名解析 |
 
-### 输出（stdout JSON）
+### 输出（stdout JSON / stderr + exit code）
 
-| 场景 | 输出格式 |
-|------|----------|
-| 正常放行 | `{ "continue": true, "suppressOutput": true }` |
-| 注入警告 | `{ "continue": true, "suppressOutput": false, "hookSpecificOutput": { "hookEventName": "PreToolUse", "additionalContext": "...", "permissionDecision": "allow" } }` |
-| 强制阻断 | `{ "continue": false, "suppressOutput": false, "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "...", "additionalContext": "..." } }` |
-| 错误降级 | `{ "continue": true, "suppressOutput": true }` |
+| 场景 | 输出 |
+|------|------|
+| 线 1 放行 | `{ "continue": true, "suppressOutput": true }` |
+| 线 1 警告 | `{ "continue": true, "suppressOutput": false, "hookSpecificOutput": { "hookEventName": "PreToolUse", "additionalContext", "permissionDecision": "allow" } }` |
+| 线 1 阻断 | `{ "continue": false, "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason", "additionalContext" } }` |
+| 线 2 PostToolUse 注入 | `{ "continue": true, "suppressOutput": false, "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext" } }` |
+| 线 2 Stop 阻断 | `stderr: blockingError` + `exit(2)`（触发 Claude Code blockingError 机制）|
+| 错误降级 | `{ "continue": true, "suppressOutput": true }` + exit(0) |
 
 ## 错误边界设计
 
-本文件是**第二层错误边界**（第一层是 `node-runner.mjs`）。`main()` 内部没有 try/catch，因为 `postToolUse()` 和 `preToolUseRead()` 自身都是纯函数，不会抛出异常。错误边界集中在 CLI 入口：
+本文件是**第二层错误边界**（第一层是 `node-runner.mjs`）。`main()` 内部无 try/catch（handler 是纯函数不抛异常），错误边界集中在 CLI 入口：
 
 ```
 stdin.on('end') 中的 try/catch
     ├── main() 调用
     │   ├── JSON.parse 失败 → 已内部处理
-    │   ├── postToolUse() → 纯函数，无异常
-    │   └── preToolUseRead() → 纯函数，无异常
+    │   ├── 线 1 handler → 纯函数
+    │   └── 线 2 buildInjection → 读 alerts.json（alertStore 内部 try/catch）
     └── 任何异常 → { continue: true } + exit(0)
 ```
-
-为什么 handler 不抛异常？因为 `state.mjs` 的所有 I/O 操作都有内部 try/catch（`readState` 返回 null，`writeState` 假设目录已存在——实际上由 `mkdirSync` 的 `recursive: true` 保证）。
 
 ## 测试覆盖
 
 | 测试场景 | 覆盖文件 | 断言 |
 |----------|----------|------|
-| 有效 event 分发 | integration.test.mjs | stdout 返回预期 JSON |
-| 无效 event 名称 | integration.test.mjs | 返回 `{ continue: true }` |
-| stdin 为空 | integration.test.mjs | 不崩溃，返回 `{ continue: true }` |
-| stdin 无效 JSON | integration.test.mjs | 不崩溃，返回 `{ continue: true }` |
-| 直接运行 index.mjs CLI | integration.test.mjs | 正确处理 stdin |
+| 4 事件分发 | integration.test.mjs | stdout 返回预期 JSON |
+| 无效 event | integration.test.mjs | 返回 `{ continue: true }` |
+| stdin 空/非法 | integration.test.mjs | 不崩溃，返回 `{ continue: true }` |
+| Stop 阻断 exit 2 | integration.test.mjs | `code === 2`，stderr 含 blockingError |
+| 直接运行 CLI | integration.test.mjs | 正确处理 stdin |

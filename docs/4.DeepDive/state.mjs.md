@@ -2,7 +2,7 @@
 
 ## 概述
 
-`plugin/src/state.mjs` 负责插件的核心状态持久化：读写状态文件、原子写入、计数器逻辑、参数比较。它是 PostToolUse 和 PreToolUse:Read 两个 handler 之间的**唯一通信渠道**。
+`plugin/src/state.mjs` 负责**线 1（主 agent Read 计数）**的状态持久化：读写状态文件、原子写入、计数器逻辑、参数比较。它是 PostToolUse:Read 和 PreToolUse:Read 两个 handler 之间的**唯一通信渠道**。（线 2 子 agent 告警状态由 `alertStore.mjs` 管理，单独的 `alerts.json`）
 
 ## 状态文件生命周期
 

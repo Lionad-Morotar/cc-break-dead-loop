@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-05-11
+**Analysis Date:** 2026-06-14
 
 ## Tech Debt
 
@@ -31,14 +31,18 @@
 ## Known Bugs
 
 ### 未检测到的问题
-- 当前测试全部通过（90/90），无已知运行时 bug
+- 当前测试全部通过（135/135，15 文件），无已知运行时 bug
 
-### Subagent/Teammate 无视 permissionDecision: deny
+### Subagent/Teammate 无视 permissionDecision: deny（已部分缓解）
 - Claude Code 已知 bug（#25000/#34692）：subagent 和 teammate 类型 agent 无视 hook 的 `permissionDecision: 'deny'` 响应
-- Files: `plugin/src/handlers.mjs`（`preToolUseRead` 函数）
-- 影响：子 agent 的死循环只能依赖 `additionalContext` 引导，无法强制阻断
-- 当前缓解：双重保险策略 — deny 对主 agent 强制阻断，additionalContext 对所有 agent 类型提供文本引导
-- 独立 agent_id 问题：每个子 agent 拥有独立状态文件，需要自己累积到 count>=5 才触发，主 agent 的阻断状态不共享
+- Files: `plugin/src/handlers.mjs`（`preToolUseRead`）
+- 影响：主 agent 线的双 Hook（deny）对子 agent 无效
+- 当前缓解（线 2 watcher 机制）：
+  - watcher 扫描 subagent transcript，检测子 agent 死循环，写 `alerts.json`
+  - `PostToolUse:*` hook 向主 agent 注入 `additionalContext`，引导调用 `TaskStopTool`
+  - `Stop` hook 返回 `blockingError`（`exit 2`），强制主 agent 继续 turn 处理告警，阻断其提前结束
+  - 即"子 agent 死循环由主 agent 经 `TaskStopTool` 终止"，绕过 deny 失效问题
+- 残留风险：依赖主 agent 遵循引导调用 `TaskStopTool`；若主 agent 忽略 `blockingError` 仍可能漏阻断
 
 ### 潜在边界问题
 - `getStateDir` 的 `_agentType` 参数被忽略，agent 目录仅使用 `agentId`
@@ -94,6 +98,18 @@
 - Why fragile: `import.meta.url === \`file://${process.argv[1]}\`` 在符号链接、Windows 路径、某些打包工具下可能不匹配
 - Safe modification: 使用更健壮的检测方式，如 `process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])`
 
+### watcher 依赖 subagent transcript 格式
+- Files: `plugin/src/subagentTranscriptReader.mjs`、`plugin/src/watcher.mjs`（`findAllAgentJsonls`、`parseAgentFromPath`）
+- Why fragile: 路径约定 `<projectsDir>/<project>/<session>/subagents/agent-<id>.jsonl` 与 jsonl 行结构（`type: 'assistant'` + `message.content[].type === 'tool_use'`）依赖 Claude Code 内部实现。若 CC 变更 subagent transcript 落盘位置或格式，watcher 检测完全失效
+- Safe modification: 保持解析容错（跳过非 assistant 行、解析失败行），新增格式版本探测
+- Test coverage: `tests/subagentTranscriptReader.test.mjs` 覆盖容错路径，但未覆盖 CC 格式变更场景
+
+### watcher 进程泄漏风险
+- Files: `plugin/src/watcherLifecycle.mjs`（`ensureWatcherRunning`）
+- Why fragile: detached spawn + `unref`，若 `setup-check.mjs` 在异常情况下多次触发且心跳判断失效，可能残留多个 watcher 进程
+- Safe modification: 启动前始终按 PID 文件 kill 旧进程（当前仅 `restart` 分支 kill）；增加进程名标记识别
+- Test coverage: `tests/watcherLifecycle.test.mjs` 覆盖 `decideAction` 三态，但未覆盖并发 setup 触发场景
+
 ## Scaling Limits
 
 ### 状态文件数量
@@ -109,8 +125,9 @@
 ## Dependencies at Risk
 
 ### Node.js 内置模块依赖
-- 项目零外部依赖，仅依赖 Node.js 内置模块：`fs`, `path`, `child_process`, `os`, `url`
-- Risk: 低。这些模块是 Node.js 核心 API，稳定性高
+- 运行时零外部依赖，仅依赖 Node.js 内置模块：`fs`, `path`, `child_process`, `os`, `url`
+- 开发依赖：`vitest` ^4.1.8（仅测试，不进入运行时；`pnpm-lock.yaml` 已提交）
+- Risk: 低。运行时模块是 Node.js 核心 API，稳定性高；vitest 主版本升级可能影响测试（fake timers / mock API 变更）
 
 ### Claude Code Hook 协议
 - Risk: 协议字段（`tool_name`, `tool_input`, `tool_response`, `agent_id`, `session_id`）若在未来版本中变更或废弃
@@ -162,4 +179,4 @@
 
 ---
 
-*Concerns audit: 2026-05-11*
+*Concerns audit: 2026-06-14*

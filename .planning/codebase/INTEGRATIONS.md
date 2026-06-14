@@ -23,11 +23,14 @@
 - 无 — 不使用任何数据库
 
 **File Storage：**
-- 本地文件系统 — 状态数据以 JSON 文件形式持久化
-  - 根目录：`~/.data/cc-break-dead-loop/`
-  - 路径结构：`~/.data/cc-break-dead-loop/<safe-project-name>/<session-id>/<safe-agent-name>/state.json`
+- 本地文件系统 — 状态/告警/进程数据以 JSON 文件形式持久化
+  - 根目录：`~/.data/cc-break-dead-loop/`（可由 `CC_BREAK_DATA_DIR` 覆盖）
+  - 主 agent 计数：`<safe-project-name>/<session-id>/<safe-agent-name>/state.json`（`plugin/src/state.mjs`）
+  - 子 agent 告警：`alerts.json`（`{ version: 1, alerts: [...] }`，`plugin/src/alertStore.mjs`，watcher 写 / hooks 读）
+  - watcher 心跳：`watcher-heartbeat.json`（`{ pid, ts }`，`plugin/src/watcher.mjs`）
+  - watcher PID：`watcher.pid`（`plugin/src/watcherLifecycle.mjs`，重启时 kill 旧进程）
   - 写入策略：原子写入（`writeFile(tmp) → rename(tmp, dest)`）避免并发损坏
-  - 使用文件：`plugin/src/state.mjs`
+- subagent transcript（只读输入）：`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`（Claude Code 生成，watcher 扫描）
 
 **Caching：**
 - 无 — 状态文件即为唯一持久化层，无额外缓存机制
@@ -55,7 +58,7 @@
 
 **CI Pipeline：**
 - 无 — 未配置 GitHub Actions 或其他 CI 服务
-- 测试命令：`node --test tests/**/*.test.mjs`（`package.json` `scripts.test`）
+- 测试命令：`npm test`（= `vitest run`，见 `package.json` `scripts.test` 与 `vitest.config.mjs`）
 
 **Distribution：**
 - 当前：手动复制安装（见 `README.md`）
@@ -63,9 +66,12 @@
 
 ## Environment Configuration
 
-**Required env vars：**
-- `HOME` 或 `USERPROFILE` — 用于定位状态数据根目录（`~/.data/cc-break-dead-loop/`）
-- `CLAUDE_PLUGIN_ROOT`（可选）— 开发时覆盖插件根目录路径
+**环境变量：**
+- `HOME` 或 `USERPROFILE` — 定位状态数据根目录（`~/.data/cc-break-dead-loop/`）
+- `CLAUDE_CONFIG_DIR` — Claude Code 配置目录（默认 `~/.claude`），watcher 据此定位 `projects/` 子目录
+- `CC_BREAK_DATA_DIR`（可选）— 覆盖状态/告警数据根目录（默认 `~/.data/cc-break-dead-loop`）
+- `CC_BREAK_PROJECTS_DIR`（可选）— 覆盖 subagent transcript 根目录（默认 `$CLAUDE_CONFIG_DIR/projects`）
+- `CLAUDE_PLUGIN_ROOT` — Claude Code 注入的插件根目录（`hooks.json` 命令展开 `${CLAUDE_PLUGIN_ROOT}`）
 
 **Secrets location：**
 - 无 secrets — 项目不涉及 API Key、Token 或其他敏感凭证
@@ -73,10 +79,12 @@
 ## Webhooks & Callbacks
 
 **Incoming：**
-- Claude Code Hook 调用（非 HTTP webhook，而是子进程 stdin/stdout 调用）
-  - `Setup` Hook — 启动时检测 Node.js 版本
-  - `PostToolUse` Hook — Read 工具调用后检测 wasted call
-  - `PreToolUse` Hook — Read 工具调用前检查计数器并决定是否阻断
+- Claude Code Hook 调用（子进程 stdin/stdout 协议，非 HTTP webhook）
+  - `Setup` Hook — 检测 Node.js 版本 + 启动/保活 watcher 常驻进程
+  - `PostToolUse:Read` Hook — 主 agent Read 后检测 wasted call，计数（线 1）
+  - `PostToolUse:*` Hook — 任意工具后注入子 agent 死循环告警（读 `alerts.json`，线 2）
+  - `PreToolUse:Read` Hook — Read 前检查计数器，决定警告（count≥3）/阻断（count≥5）
+  - `Stop` Hook — 主 agent 结束 turn 时，若有未处理子 agent 死循环告警，返回 blockingError（`exit 2`）强制继续 turn
 
 **Outgoing：**
 - 无 — 插件不向外部服务发起任何 HTTP 请求或回调

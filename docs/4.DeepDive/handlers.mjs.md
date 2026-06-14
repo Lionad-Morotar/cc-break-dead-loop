@@ -2,7 +2,7 @@
 
 ## 概述
 
-`plugin/src/handlers.mjs` 实现插件的**核心检测与拦截逻辑**，包含两个互补的 handler：
+`plugin/src/handlers.mjs` 实现**线 1（主 agent Read 死循环）**的检测与拦截逻辑，包含两个互补的 handler。（线 2 子 agent 工具死循环由 `watcher.mjs` / `deadLoopDetector.mjs` / `alertStore.mjs` / `hookInjector.mjs` 处理，详见 [Plugin Registration](./Plugin%20Registration.md) 与 [3. Workflow Overview](../3.%20Workflow%20Overview.md)）
 
 | Handler | 职责 | 触发时机 |
 |---------|------|----------|

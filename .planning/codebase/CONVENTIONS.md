@@ -82,10 +82,12 @@ try {
 }
 ```
 
-**双重错误边界:**
-- 第一层：`plugin/src/index.mjs` 的 `main()` 函数 try/catch
-- 第二层：`plugin/scripts/node-runner.mjs` 的 `finish()` 函数 try/catch
+**多层错误边界:**
+- 第一层：`plugin/src/index.mjs` 的 `main()` 函数 try/catch（JSON 解析 + handler 调用）
+- 第二层：`plugin/scripts/node-runner.mjs` 的 `finish()` 函数 try/catch（含 Stop `shouldBlock` 处理）
 - 第三层：CLI 入口的 `process.stdin.on('error', ...)`
+- watcher 层：`watcher.mjs` / `watcherLifecycle.mjs` 内部 try/catch，扫描异常跳过损坏 jsonl；watcher 崩溃由心跳过期 + 下次 Setup `decideAction → restart` 自动恢复
+- Setup 层：`setup-check.mjs` watcher 启动失败仅 `console.error`，永不阻断 Claude Code（`exit(0)`）
 
 ## 日志记录
 
@@ -114,11 +116,17 @@ try {
 **导出模式:**
 - 使用命名导出（`export function`），不使用默认导出
 - 每个模块职责单一：
-  - `config.mjs` — 纯常量配置
-  - `utils.mjs` — 纯函数工具
-  - `state.mjs` — 状态管理
-  - `handlers.mjs` — 业务逻辑 handler
-  - `index.mjs` — 入口与分发
+  - `config.mjs` — 纯常量配置（阈值、数据目录、watcher 参数）
+  - `utils.mjs` — 纯函数工具（`sanitizeName`、`getProjectName`）
+  - `state.mjs` — 主 agent Read 计数状态管理
+  - `handlers.mjs` — 主 agent 检测/拦截 handler（双 Hook）
+  - `index.mjs` — Hook 入口与 4 事件分发
+  - `watcher.mjs` — watcher 扫描协调（transcript → 检测 → 告警同步）
+  - `watcherLifecycle.mjs` — watcher 进程决策（`decideAction`）与 spawn（`ensureWatcherRunning`）
+  - `alertStore.mjs` — 子 agent 死循环告警存储（watcher 写 / hooks 读）
+  - `deadLoopDetector.mjs` — 死循环检测算法（纯函数）
+  - `hookInjector.mjs` — Hook 注入措辞生成（纯函数）
+  - `subagentTranscriptReader.mjs` — subagent jsonl 解析
 
 **无 barrel 文件:** 直接导入具体模块，不通过索引文件聚合导出
 
