@@ -14,7 +14,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.mjs tests/**/*.test.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm test"
   },
   "repository": {
@@ -35,5 +36,8 @@
     "read-deduplication"
   ],
   "author": "仿生狮子",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
 }

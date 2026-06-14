@@ -1,4 +1,4 @@
-import { before, describe, it } from 'node:test';
+import { beforeAll, describe, it } from 'vitest';
 import assert from 'node:assert';
 import { rmSync } from 'node:fs';
 import {
@@ -133,7 +133,7 @@ describe('postToolUse', () => {
 });
 
 describe('preToolUseRead', () => {
-  before(() => {
+  beforeAll(() => {
     // 清理之前测试运行可能遗留的状态文件
     const stateDir = getStateDir(baseInput.cwd, baseInput.session_id, baseInput.agent_id, baseInput.agent_type);
     try {

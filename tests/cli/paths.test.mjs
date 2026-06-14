@@ -1,5 +1,5 @@
 import { strictEqual, ok } from 'node:assert';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {

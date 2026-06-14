@@ -1,5 +1,5 @@
 import { strictEqual, ok } from 'node:assert';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import { parseArgs, showHelp, showVersion } from '../../src/cli/index.mjs';
 
 describe('CLI index.mjs', () => {
