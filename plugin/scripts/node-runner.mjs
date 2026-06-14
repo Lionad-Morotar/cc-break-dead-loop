@@ -26,6 +26,12 @@ async function finish() {
   try {
     const result = await main(event, data);
 
+    // Stop hook 的 blockingError：exit 2 + stderr 触发 Claude Code 强制 continue
+    if (result?.shouldBlock) {
+      process.stderr.write(result.systemMessage);
+      process.exit(2);
+    }
+
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(result));
     process.exit(0);
