@@ -4,14 +4,16 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createWatcher } from '../plugin/src/watcher.mjs';
-import { getAlertsForSession } from '../plugin/src/alertStore.mjs';
+import { getAlertsForSession, addAlert } from '../plugin/src/alertStore.mjs';
 
-/** 构造 assistant tool_use 行 */
-function assistantLine(toolName, input) {
-  return JSON.stringify({
+/** 构造 assistant tool_use 行（可选 timestamp） */
+function assistantLine(toolName, input, timestamp) {
+  const obj = {
     type: 'assistant',
     message: { content: [{ type: 'tool_use', id: `tu-${Math.random()}`, name: toolName, input }] },
-  });
+  };
+  if (timestamp) obj.timestamp = timestamp;
+  return JSON.stringify(obj);
 }
 
 /** 在 tmpDir 下构造 projects/<proj>/<session>/subagents/agent-<id>.jsonl */
@@ -124,6 +126,69 @@ describe('Watcher', () => {
     assert.strictEqual(existsSync(heartbeatFile), true, '心跳文件应独立创建');
   });
 
+  it('jsonl 末行 timestamp 距今 > staleMs → 视为停滞，不写告警', () => {
+    const staleTs = new Date(Date.now() - 60_000).toISOString(); // 1 分钟前
+    const deadLoop = Array(6).fill(assistantLine('Read', { file_path: '/a' }, staleTs));
+    writeAgentJsonl(projectsDir, 'proj-1', 'sess-1', 'stale-agent', deadLoop);
+
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+    });
+    watcher.scanOnce();
+
+    assert.strictEqual(
+      getAlertsForSession(alertsFile, 'sess-1').length,
+      0,
+      '停滞子 agent（最后活动 > 15s）不应报',
+    );
+  });
+
+  it('jsonl 末行 timestamp 距今 ≤ staleMs → 活跃，正常报死循环', () => {
+    const freshTs = new Date(Date.now() - 1_000).toISOString(); // 1 秒前
+    const deadLoop = Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs));
+    writeAgentJsonl(projectsDir, 'proj-1', 'sess-1', 'fresh-agent', deadLoop);
+
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+    });
+    watcher.scanOnce();
+
+    const alerts = getAlertsForSession(alertsFile, 'sess-1');
+    assert.strictEqual(alerts.length, 1);
+    assert.strictEqual(alerts[0].taskId, 'fresh-agent');
+  });
+
+  it('之前活跃告警、现在停滞 → removeAlert 清除', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-14T10:00:00Z'));
+
+    const freshTs = new Date(Date.now() - 1_000).toISOString(); // 09:59:59
+    writeAgentJsonl(
+      projectsDir, 'proj-1', 'sess-1', 'gone-stale',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs)),
+    );
+
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+    });
+    watcher.scanOnce(); // now=10:00:00, lastTs=09:59:59, 1s < 15s → 活跃 → 报
+    assert.strictEqual(getAlertsForSession(alertsFile, 'sess-1').length, 1);
+
+    // 时间推进 20s，jsonl 不变但 lastTs 距今 21s > 15s → 停滞
+    vi.setSystemTime(new Date('2026-06-14T10:00:20Z'));
+    watcher.scanOnce();
+
+    assert.strictEqual(
+      getAlertsForSession(alertsFile, 'sess-1').length,
+      0,
+      '停滞后告警应清除',
+    );
+    vi.useRealTimers();
+  });
+
   it('路径解析：从多项目多 session 结构正确提取 agentId/sessionId', () => {
     writeAgentJsonl(projectsDir, 'proj-alpha', 'sess-X', 'agent-1', Array(6).fill(assistantLine('Grep', { pattern: 'x' })));
     writeAgentJsonl(projectsDir, 'proj-beta', 'sess-Y', 'agent-2', Array(6).fill(assistantLine('Bash', { command: 'ls' })));
@@ -134,6 +199,33 @@ describe('Watcher', () => {
     assert.strictEqual(getAlertsForSession(alertsFile, 'sess-X').length, 1);
     assert.strictEqual(getAlertsForSession(alertsFile, 'sess-Y').length, 1);
     assert.strictEqual(getAlertsForSession(alertsFile, 'sess-X')[0].taskId, 'agent-1');
+  });
+
+  it('watcher 启动时从 alerts.json 初始化，清除重启遗留的幽灵告警', () => {
+    // 预写一条幽灵告警（模拟旧 watcher 留下、子 agent 早已停滞）
+    addAlert(alertsFile, {
+      taskId: 'ghost',
+      sessionId: 'sess-1',
+      toolName: 'Read',
+      paramFingerprint: 'f',
+      repeatCount: 20,
+      detectedAt: new Date().toISOString(),
+    });
+    // ghost 对应 jsonl：死循环内容 + 很旧的 timestamp（停滞）
+    const staleTs = new Date(Date.now() - 60_000).toISOString();
+    writeAgentJsonl(
+      projectsDir, 'proj-1', 'sess-1', 'ghost',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' }, staleTs)),
+    );
+
+    // 新 watcher 启动：previousDeadLoopIds 从 alerts.json 初始化 = {ghost}
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+    });
+    watcher.scanOnce(); // ghost 停滞 → 移出 currentDeadLoops → removeAlert
+
+    assert.strictEqual(getAlertsForSession(alertsFile, 'sess-1').length, 0, '幽灵告警应清除');
   });
 
   it('start/stop 按 interval 定时扫描', async () => {

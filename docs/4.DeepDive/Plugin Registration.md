@@ -35,7 +35,7 @@ plugin/
 ```json
 {
   "name": "cc-break-dead-loop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Claude Code 插件：自动检测并打断 agent 的死循环",
   "author": { "name": "仿生狮子" },
   "license": "MIT",

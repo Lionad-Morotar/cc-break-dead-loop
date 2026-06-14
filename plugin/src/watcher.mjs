@@ -9,9 +9,9 @@
 
 import { readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { readRecentToolCalls } from './subagentTranscriptReader.mjs';
+import { readRecentToolCalls, readLastActivityTimestamp } from './subagentTranscriptReader.mjs';
 import { detectDeadLoop } from './deadLoopDetector.mjs';
-import { addAlert, removeAlert } from './alertStore.mjs';
+import { addAlert, removeAlert, getAllAlerts } from './alertStore.mjs';
 
 /**
  * 递归查找所有 agent-*.jsonl
@@ -52,7 +52,7 @@ function parseAgentFromPath(jsonlPath) {
 
 /**
  * 创建 watcher 实例
- * @param {{ projectsDir: string, alertsFile: string, heartbeatFile: string, windowSize?: number, threshold?: number }} options
+ * @param {{ projectsDir: string, alertsFile: string, heartbeatFile: string, windowSize?: number, threshold?: number, staleMs?: number }} options
  */
 export function createWatcher(options) {
   const {
@@ -61,10 +61,15 @@ export function createWatcher(options) {
     heartbeatFile,
     windowSize = 20,
     threshold = 5,
+    staleMs = 15_000,
   } = options;
 
-  /** 上次扫描检测到的死循环 agentId 集合，用于同步告警 */
-  let previousDeadLoopIds = new Set();
+  /**
+   * 上次扫描检测到的死循环 agentId 集合，用于同步告警。
+   * 启动时从 alerts.json 初始化，使重启后能清除遗留的幽灵告警
+   * （否则 previousDeadLoopIds 为空 → 首次扫描无法 removeAlert 旧告警）。
+   */
+  let previousDeadLoopIds = new Set(getAllAlerts(alertsFile).map((a) => a.taskId));
 
   function writeHeartbeat() {
     try {
@@ -85,6 +90,15 @@ export function createWatcher(options) {
 
     for (const jsonlPath of jsonls) {
       const { agentId, sessionId } = parseAgentFromPath(jsonlPath);
+      const lastTs = readLastActivityTimestamp(jsonlPath);
+      // null（无 timestamp）视为活跃：生产 Claude Code 总写 timestamp，null 是异常，
+      // 保守报死循环（宁误报不漏报）
+      const isStale = lastTs !== null && Date.now() - lastTs > staleMs;
+      if (isStale) {
+        // 子 agent 已停滞（最后活动 > staleMs 前），跳过检测；
+        // 不放入 currentDeadLoops → 若之前有告警会触发 removeAlert 清除
+        continue;
+      }
       const calls = readRecentToolCalls(jsonlPath, windowSize);
       const loop = detectDeadLoop(calls, threshold);
       if (loop) {

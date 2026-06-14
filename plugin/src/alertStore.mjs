@@ -23,7 +23,7 @@ import { dirname } from 'node:path';
  * @param {string} filePath
  * @returns {Alert[]}
  */
-function readAllAlerts(filePath) {
+export function getAllAlerts(filePath) {
   try {
     const raw = readFileSync(filePath, 'utf8');
     const data = JSON.parse(raw);
@@ -51,7 +51,7 @@ function writeAllAlerts(filePath, alerts) {
  * @param {Alert} alert
  */
 export function addAlert(filePath, alert) {
-  const alerts = readAllAlerts(filePath);
+  const alerts = getAllAlerts(filePath);
   const idx = alerts.findIndex((a) => a.taskId === alert.taskId);
   if (idx >= 0) {
     alerts[idx] = alert;
@@ -67,7 +67,7 @@ export function addAlert(filePath, alert) {
  * @param {string} taskId
  */
 export function removeAlert(filePath, taskId) {
-  const alerts = readAllAlerts(filePath);
+  const alerts = getAllAlerts(filePath);
   const filtered = alerts.filter((a) => a.taskId !== taskId);
   if (filtered.length !== alerts.length) {
     writeAllAlerts(filePath, filtered);
@@ -82,7 +82,7 @@ export function removeAlert(filePath, taskId) {
  * @returns {Alert[]}
  */
 export function getAlertsForSession(filePath, sessionId, agentId) {
-  const alerts = readAllAlerts(filePath);
+  const alerts = getAllAlerts(filePath);
   return alerts.filter(
     (a) => a.sessionId === sessionId && (!agentId || a.taskId === agentId),
   );

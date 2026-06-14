@@ -58,3 +58,41 @@ export function readRecentToolCalls(jsonlPath, windowSize) {
 
   return toolCalls.slice(-windowSize);
 }
+
+/**
+ * 读取 jsonl 最后一行的 timestamp（ms epoch）
+ *
+ * 用于判断子 agent 是否仍活跃：若最后活动时间距今超过阈值，视为停滞。
+ * 倒序查找第一个带合法 timestamp 的行，跳过损坏行与无 timestamp 行。
+ *
+ * @param {string} jsonlPath
+ * @returns {number | null} ms epoch，文件不存在/空/无 timestamp 时返回 null
+ */
+export function readLastActivityTimestamp(jsonlPath) {
+  let raw;
+  try {
+    raw = readFileSync(jsonlPath, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const lines = raw.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof entry.timestamp === 'string') {
+      const ms = Date.parse(entry.timestamp);
+      if (!Number.isNaN(ms)) {
+        return ms;
+      }
+    }
+  }
+
+  return null;
+}

@@ -38,5 +38,8 @@ export const WATCHER_THRESHOLD = 5;
 /** watcher 扫描间隔（ms） */
 export const WATCHER_SCAN_INTERVAL_MS = 5_000;
 
+/** 子 agent 停滞判定阈值（ms）：jsonl 最后活动距今超过此值视为已停止，清除其告警 */
+export const WATCHER_STALE_MS = 15_000;
+
 /** 心跳超时阈值（ms），超过视为 watcher 已死需重启 */
 export const WATCHER_STALE_TIMEOUT_MS = 30_000;

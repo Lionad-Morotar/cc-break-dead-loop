@@ -14,6 +14,7 @@ import {
   WATCHER_WINDOW_SIZE,
   WATCHER_THRESHOLD,
   WATCHER_SCAN_INTERVAL_MS,
+  WATCHER_STALE_MS,
 } from '../src/config.mjs';
 
 const watcher = createWatcher({
@@ -22,6 +23,7 @@ const watcher = createWatcher({
   heartbeatFile: HEARTBEAT_FILE,
   windowSize: WATCHER_WINDOW_SIZE,
   threshold: WATCHER_THRESHOLD,
+  staleMs: WATCHER_STALE_MS,
 });
 
 // 启动时立即扫描一次，快速进入守护状态

@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readRecentToolCalls } from '../plugin/src/subagentTranscriptReader.mjs';
+import { readRecentToolCalls, readLastActivityTimestamp } from '../plugin/src/subagentTranscriptReader.mjs';
 
 /**
  * 构造 assistant 行（含若干 tool_use block）
@@ -129,5 +129,75 @@ describe('SubagentTranscriptReader', () => {
 
     const result = readRecentToolCalls(jsonlFile, 10);
     assert.strictEqual(result.length, 1);
+  });
+});
+
+describe('readLastActivityTimestamp', () => {
+  let jsonlFile;
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'cc-break-lastts-'));
+    jsonlFile = join(tmpDir, 'agent-test.jsonl');
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('返回末行 timestamp（ms epoch）', () => {
+    writeFileSync(
+      jsonlFile,
+      [
+        JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' }),
+        JSON.stringify({ type: 'user', timestamp: '2026-06-14T10:00:05.000Z' }),
+      ].join('\n') + '\n',
+    );
+
+    const ts = readLastActivityTimestamp(jsonlFile);
+    assert.strictEqual(ts, Date.parse('2026-06-14T10:00:05.000Z'));
+  });
+
+  it('文件不存在 → null', () => {
+    assert.strictEqual(readLastActivityTimestamp(join(tmpDir, 'nope.jsonl')), null);
+  });
+
+  it('空文件 → null', () => {
+    writeFileSync(jsonlFile, '');
+    assert.strictEqual(readLastActivityTimestamp(jsonlFile), null);
+  });
+
+  it('末行无 timestamp → 倒序找前一行有 timestamp 的', () => {
+    writeFileSync(
+      jsonlFile,
+      [
+        JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' }),
+        JSON.stringify({ type: 'user' }), // 无 timestamp
+      ].join('\n') + '\n',
+    );
+
+    const ts = readLastActivityTimestamp(jsonlFile);
+    assert.strictEqual(ts, Date.parse('2026-06-14T10:00:00.000Z'));
+  });
+
+  it('所有行都无 timestamp → null', () => {
+    writeFileSync(
+      jsonlFile,
+      [JSON.stringify({ type: 'assistant' }), JSON.stringify({ type: 'user' })].join('\n') + '\n',
+    );
+    assert.strictEqual(readLastActivityTimestamp(jsonlFile), null);
+  });
+
+  it('末行损坏（非 JSON）→ 跳过找前一行', () => {
+    writeFileSync(
+      jsonlFile,
+      [
+        JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' }),
+        '{not-json',
+      ].join('\n') + '\n',
+    );
+
+    const ts = readLastActivityTimestamp(jsonlFile);
+    assert.strictEqual(ts, Date.parse('2026-06-14T10:00:00.000Z'));
   });
 });
