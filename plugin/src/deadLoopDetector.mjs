@@ -26,6 +26,46 @@ function stableStringify(value) {
 }
 
 /**
+ * 每个工具的"语义关键字段"白名单——决定工具实际行为/副作用的字段。
+ * 指纹只基于这些字段，忽略 description 等注释字段，
+ * 防止子代理给重复调用加递增 description（如 "poll 1/2/3"）绕过检测。
+ * 未列出的工具 → 兜底使用全部 input 字段（保持旧行为，不漏检）。
+ */
+const TOOL_FINGERPRINT_FIELDS = {
+  Bash: ['command'],
+  Read: ['file_path', 'offset', 'limit'],
+  Write: ['file_path', 'content'],
+  Edit: ['file_path', 'old_string', 'new_string'],
+  MultiEdit: ['file_path', 'edits'],
+  Glob: ['pattern', 'path'],
+  Grep: ['pattern', 'path', 'glob', 'output_mode', '-i', 'type', 'multiline', 'head_limit'],
+  WebFetch: ['url', 'prompt'],
+  WebSearch: ['query'],
+};
+
+/**
+ * 工具指纹：按工具类型提取语义关键字段后稳定序列化。
+ * 已注册工具 → 仅白名单字段（剔除 description 等注释）；
+ * 未注册工具 → 全字段（兜底，保持旧行为）。
+ * @param {string} toolName
+ * @param {Record<string, unknown>} input
+ * @returns {string}
+ */
+function toolFingerprint(toolName, input) {
+  const fields = TOOL_FINGERPRINT_FIELDS[toolName];
+  if (!fields) {
+    return stableStringify(input);
+  }
+  const subset = {};
+  if (input && typeof input === 'object') {
+    for (const f of fields) {
+      if (f in input) subset[f] = input[f];
+    }
+  }
+  return stableStringify(subset);
+}
+
+/**
  * @typedef {Object} ToolCall
  * @property {string} toolName
  * @property {Record<string, unknown>} input
@@ -55,13 +95,13 @@ export function detectDeadLoop(calls, threshold) {
   }
 
   const last = calls[calls.length - 1];
-  const lastFingerprint = stableStringify(last.input);
+  const lastFingerprint = toolFingerprint(last.toolName, last.input);
 
   let count = 1;
   for (let i = calls.length - 2; i >= 0; i--) {
     if (
       calls[i].toolName === last.toolName &&
-      stableStringify(calls[i].input) === lastFingerprint
+      toolFingerprint(calls[i].toolName, calls[i].input) === lastFingerprint
     ) {
       count++;
     } else {

@@ -105,4 +105,36 @@ describe('DeadLoopDetector', () => {
 
     assert.strictEqual(detectDeadLoop(calls, 3), null);
   });
+
+  it('Bash description 递增但 command 相同 → 视为死循环（指纹忽略注释字段）', () => {
+    // 真实场景：子代理给重复 Bash 加 "poll 1/2/3..." 递增 description
+    // 若指纹含 description，每次指纹不同，会绕过检测
+    const cmd = "bash -c 'sleep 2; echo poll'";
+    const calls = Array.from({ length: 5 }, (_, i) => ({
+      toolName: 'Bash',
+      input: { command: cmd, description: `poll ${i + 1}` },
+    }));
+    const result = detectDeadLoop(calls, 5);
+    assert.ok(result, 'description 递增不应绕过检测，command 相同即死循环');
+    assert.strictEqual(result.toolName, 'Bash');
+    assert.strictEqual(result.repeatCount, 5);
+    assert.ok(!result.paramFingerprint.includes('description'), '指纹应不含 description 字段');
+    assert.ok(result.paramFingerprint.includes('command'), '指纹应含 command');
+  });
+
+  it('未注册工具 → 兜底全字段指纹（保持旧行为，不漏检）', () => {
+    // 未在白名单注册的工具（如自定义 MCP 工具）：兜底用全部 input 字段
+    const diffMeta = Array.from({ length: 3 }, (_, i) => ({
+      toolName: 'mcp_custom__tool',
+      input: { query: 'same', meta: `attempt ${i + 1}` },
+    }));
+    // meta 不同 → 全字段指纹不同 → 不触发（保持旧行为，避免误报）
+    assert.strictEqual(detectDeadLoop(diffMeta, 3), null);
+
+    const sameMeta = Array(3).fill({
+      toolName: 'mcp_custom__tool',
+      input: { query: 'same', meta: 'fixed' },
+    });
+    assert.ok(detectDeadLoop(sameMeta, 3), '全字段相同时应触发');
+  });
 });
