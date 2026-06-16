@@ -1,6 +1,6 @@
 {
   "name": "cc-break-dead-loop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Claude Code 插件：双线死循环防护 —— 主 agent 连续 Read 同一未改动文件（双 Hook 拦截）+ 子 agent 工具调用死循环（watcher 常驻进程扫描，引导主 agent 调 TaskStopTool 终止）",
   "author": {
     "name": "仿生狮子"

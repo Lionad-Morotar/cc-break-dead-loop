@@ -1,6 +1,6 @@
 {
   "name": "cc-break-dead-loop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Claude Code 插件：自动检测并打断 agent 对同一未改动文件的连续 Read 死循环",
   "type": "module",
   "bin": {
