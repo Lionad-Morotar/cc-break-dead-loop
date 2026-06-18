@@ -4,6 +4,7 @@
 
 import { postToolUse, preToolUseRead } from './handlers.mjs';
 import { buildInjection } from './hookInjector.mjs';
+import { buildSessionStartAdvice } from './sessionStartAdvice.mjs';
 import { ALERTS_FILE } from './config.mjs';
 
 /**
@@ -28,9 +29,23 @@ export async function main(event, stdinData) {
       return postToolUseAnyAlert(input);
     case 'stop':
       return stopAlert(input);
+    case 'session-start':
+      return sessionStartAdvice();
     default:
       return { continue: true, suppressOutput: true };
   }
+}
+
+/**
+ * SessionStart：会话启动时注入子代理使用建议（引导优先用后台子代理）
+ */
+function sessionStartAdvice() {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: buildSessionStartAdvice(),
+    },
+  };
 }
 
 /**

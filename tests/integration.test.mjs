@@ -145,6 +145,16 @@ describe('integration: stdin/stdout protocol', () => {
     assert.strictEqual(parsed.continue, true);
   });
 
+  it('SessionStart event → 注入 additionalContext（hookSpecificOutput.SessionStart）', async () => {
+    const result = await runRunner('session-start', {});
+
+    assert.strictEqual(result.code, 0);
+    const parsed = JSON.parse(result.stdout);
+    assert.strictEqual(parsed.hookSpecificOutput.hookEventName, 'SessionStart');
+    assert.ok(typeof parsed.hookSpecificOutput.additionalContext === 'string');
+    assert.ok(parsed.hookSpecificOutput.additionalContext.length > 0);
+  });
+
   it('stdin 为空 → 不崩溃，返回 { continue: true }（D5）', async () => {
     const result = await runRunner('post-tool-use', null);
 
