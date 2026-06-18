@@ -12,7 +12,7 @@ cc-break-dead-loop/
 │       ├── commands/              # install / uninstall / status
 │       └── utils/                 # config / fs / paths
 ├── plugin/                        # Claude Code 插件
-│   ├── src/                       # 核心源码（11 个 ES Module 文件）
+│   ├── src/                       # 核心源码（13 个 ES Module 文件）
 │   │   ├── index.mjs              # Hook 入口（stdin/stdout 协议、handler 分发、Stop 阻断）
 │   │   ├── config.mjs             # 阈值、数据目录、watcher 参数常量
 │   │   ├── handlers.mjs           # PostToolUse:Read + PreToolUse:Read 双 Handler（主 agent Read 死循环）
@@ -27,7 +27,7 @@ cc-break-dead-loop/
 │   ├── .claude-plugin/
 │   │   └── plugin.json            # 插件元数据（name、version、description）
 │   ├── hooks/
-│   │   └── hooks.json             # Hook 注册（Setup、PostToolUse[Read+*]、PreToolUse[Read]、Stop）
+│   │   └── hooks.json             # Hook 注册（Setup、SessionStart、PostToolUse[Read+*]、PreToolUse[Read]、Stop）
 │   └── scripts/
 │       ├── node-runner.mjs        # Node.js runner（stdin 收集、透传 JSON、Stop exit 2、graceful fallback）
 │       ├── setup-check.mjs        # Setup 钩子：环境检测 + 启动/保活 watcher 常驻进程
@@ -103,6 +103,7 @@ cc-break-dead-loop/
 - 主 agent 线：`plugin/src/handlers.mjs`（PostToolUse 检测 + PreToolUse 阻断）、`plugin/src/state.mjs`（计数器）
 - 子 agent 线：`plugin/src/watcher.mjs`（扫描协调）、`deadLoopDetector.mjs`（算法）、`alertStore.mjs`（告警）、`hookInjector.mjs`（注入）、`subagentTranscriptReader.mjs`（jsonl 解析）、`watcherLifecycle.mjs`（进程管理）
 - 共享：`plugin/src/utils.mjs`（sanitizeName、getProjectName）
+- 补充缓解：`plugin/src/notifier.mjs`（活跃死循环桌面通知）、`plugin/src/sessionStartAdvice.mjs`（SessionStart 注入引导后台子代理）
 
 **测试:**
 - `tests/state.test.mjs`、`tests/handlers.test.mjs`、`tests/integration.test.mjs`

@@ -7,6 +7,7 @@
  */
 
 import { createWatcher } from '../src/watcher.mjs';
+import { notifyDeadLoop } from '../src/notifier.mjs';
 import {
   PROJECTS_DIR,
   ALERTS_FILE,
@@ -15,6 +16,7 @@ import {
   WATCHER_THRESHOLD,
   WATCHER_SCAN_INTERVAL_MS,
   WATCHER_STALE_MS,
+  NOTIFY_ENABLED,
 } from '../src/config.mjs';
 
 const watcher = createWatcher({
@@ -24,6 +26,8 @@ const watcher = createWatcher({
   windowSize: WATCHER_WINDOW_SIZE,
   threshold: WATCHER_THRESHOLD,
   staleMs: WATCHER_STALE_MS,
+  notify: notifyDeadLoop,
+  notifyEnabled: NOTIFY_ENABLED,
 });
 
 // 启动时立即扫描一次，快速进入守护状态

@@ -8,6 +8,7 @@
 
 **关键特征：**
 - Claude Code 插件，通过 Hook 机制 + 常驻 watcher 进程双重检测
+- 补充缓解：SessionStart 注入（引导后台子代理）+ watcher 桌面通知（活跃死循环提醒用户手动中断），针对前台同步子代理死循环的架构死结
 - **线 1（主 agent）**：PostToolUse:Read 计数 + PreToolUse:Read 阻断（双 Hook 协作）
 - **线 2（子 agent）**：watcher 扫 subagent transcript → 检测 → 写告警 → Stop/PostToolUse:`*` Hook 注入引导主 agent 调用 `TaskStopTool`
 - 零运行时依赖，纯 Node.js 内置模块
@@ -19,7 +20,7 @@
 **插件注册层（Plugin Registration）:**
 - Purpose: 向 Claude Code 注册 Hook，定义触发条件与执行命令
 - Location: `plugin/hooks/hooks.json`
-- Contains: 5 个 hook entry — Setup、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
+- Contains: 6 个 hook entry — Setup、SessionStart、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
 - Used by: Claude Code 运行时
 
 **Runner 层:**
@@ -30,7 +31,7 @@
 **入口/分发层（Entry）:**
 - Purpose: stdin/stdout 协议处理、4 事件分发、统一错误边界
 - Location: `plugin/src/index.mjs`
-- Contains: `main(event, stdinData)`、`postToolUseAnyAlert`、`stopAlert`、CLI 入口
+- Contains: `main(event, stdinData)`、`postToolUseAnyAlert`、`stopAlert`、`sessionStartAdvice`、CLI 入口
 - Depends on: `handlers.mjs`、`hookInjector.mjs`、`config.mjs`
 
 **主 Agent Handler 层:**
@@ -80,6 +81,18 @@
 - Contains: `buildInjection`、`postToolUseMessage`、`stopMessage`、`pickMostSevere`
 - Depends on: `alertStore.mjs`
 - Used by: `plugin/src/index.mjs`（post-tool-use-any / stop 事件）
+
+**桌面通知层:**
+- Purpose: 活跃死循环时发系统通知，提醒用户手动中断前台子代理（架构死结下够不到主 agent 就够用户）
+- Location: `plugin/src/notifier.mjs`
+- Contains: `notifyDeadLoop`（darwin osascript / linux notify-send，失败静默，依赖注入 exec/platform 便于测试）
+- Used by: `plugin/src/watcher.mjs`
+
+**SessionStart 注入层:**
+- Purpose: 会话启动时注入子代理使用建议，引导主 agent 优先用后台子代理（预防性劝说）
+- Location: `plugin/src/sessionStartAdvice.mjs`
+- Contains: `buildSessionStartAdvice`
+- Used by: `plugin/src/index.mjs`（session-start 事件）
 
 **配置层:**
 - Purpose: 阈值、数据目录、watcher 参数常量

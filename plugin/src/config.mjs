@@ -43,3 +43,6 @@ export const WATCHER_STALE_MS = 15_000;
 
 /** 心跳超时阈值（ms），超过视为 watcher 已死需重启 */
 export const WATCHER_STALE_TIMEOUT_MS = 30_000;
+
+/** 桌面通知开关：活跃死循环时提醒用户手动中断前台子代理（设 CC_BREAK_NOTIFY=0 关闭） */
+export const NOTIFY_ENABLED = process.env.CC_BREAK_NOTIFY !== '0';
