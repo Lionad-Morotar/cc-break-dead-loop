@@ -245,4 +245,93 @@ describe('Watcher', () => {
     watcher.stop();
     vi.useRealTimers();
   });
+
+  it('活跃死循环首次扫描 → 触发一次桌面通知，第二次扫描防抖', () => {
+    const freshTs = new Date(Date.now() - 1_000).toISOString();
+    writeAgentJsonl(
+      projectsDir, 'proj', 'sess', 'agent-notify',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs)),
+    );
+    const calls = [];
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+      notify: (info) => calls.push(info),
+    });
+
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 1, '首次发现应通知');
+    assert.strictEqual(calls[0].agentType, 'agent-notify');
+    assert.strictEqual(calls[0].toolName, 'Read');
+
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 1, '同 agent 防抖，不再通知');
+  });
+
+  it('死循环消失后重新出现 → 防抖重置，能再次通知', () => {
+    const freshTs = new Date(Date.now() - 1_000).toISOString();
+    const jsonlPath = writeAgentJsonl(
+      projectsDir, 'proj', 'sess', 'agent-rebind',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs)),
+    );
+    const calls = [];
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+      notify: (info) => calls.push(info),
+    });
+
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 1);
+
+    // 恢复：追加 Bash 打断死循环 → 消失 → 防抖重置
+    writeFileSync(
+      jsonlPath,
+      [...Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs)), assistantLine('Bash', { command: 'ls' })].join('\n') + '\n',
+    );
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 1, '恢复期间不通知');
+
+    // 再次死循环 → 重新通知
+    writeFileSync(jsonlPath, Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs)).join('\n') + '\n');
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 2, '重新出现应再次通知');
+  });
+
+  it('停滞子 agent（isStale）→ 不通知', () => {
+    const staleTs = new Date(Date.now() - 60_000).toISOString();
+    writeAgentJsonl(
+      projectsDir, 'proj', 'sess', 'agent-stale',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' }, staleTs)),
+    );
+    const calls = [];
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+      notify: (info) => calls.push(info),
+    });
+
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 0, '停滞子 agent 不应通知');
+  });
+
+  it('notifyEnabled=false → 即使活跃死循环也不通知', () => {
+    const freshTs = new Date(Date.now() - 1_000).toISOString();
+    writeAgentJsonl(
+      projectsDir, 'proj', 'sess', 'agent-muted',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' }, freshTs)),
+    );
+    const calls = [];
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+      notify: (info) => calls.push(info),
+      notifyEnabled: false,
+    });
+
+    watcher.scanOnce();
+    assert.strictEqual(calls.length, 0, 'notifyEnabled=false 应跳过通知');
+    // 但告警仍正常写入（通知与告警注入是两路）
+    assert.strictEqual(getAlertsForSession(alertsFile, 'sess').length, 1);
+  });
 });

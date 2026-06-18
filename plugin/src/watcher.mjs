@@ -62,6 +62,8 @@ export function createWatcher(options) {
     windowSize = 20,
     threshold = 5,
     staleMs = 15_000,
+    notify = () => {},
+    notifyEnabled = true,
   } = options;
 
   /**
@@ -70,6 +72,13 @@ export function createWatcher(options) {
    * （否则 previousDeadLoopIds 为空 → 首次扫描无法 removeAlert 旧告警）。
    */
   let previousDeadLoopIds = new Set(getAllAlerts(alertsFile).map((a) => a.taskId));
+
+  /**
+   * 已发过桌面通知的 agentId 集合（防抖）。
+   * 死循环消失后从中移除，允许下次重新出现时再次通知。
+   * 进程内存，watcher 重启重置（重启不频繁，可接受）。
+   */
+  const notifiedAgentIds = new Set();
 
   function writeHeartbeat() {
     try {
@@ -110,6 +119,12 @@ export function createWatcher(options) {
           repeatCount: loop.repeatCount,
           detectedAt: new Date().toISOString(),
         });
+        // 活跃死循环首次发现 → 桌面通知用户手动中断（前台子代理插件够不到主 agent，只能靠用户）
+        // 防抖：同 agent 只通知一次，死循环消失后重置
+        if (notifyEnabled && !notifiedAgentIds.has(agentId)) {
+          notify({ agentType: agentId, toolName: loop.toolName, repeatCount: loop.repeatCount });
+          notifiedAgentIds.add(agentId);
+        }
       }
     }
 
@@ -117,6 +132,7 @@ export function createWatcher(options) {
     for (const id of previousDeadLoopIds) {
       if (!currentDeadLoops.has(id)) {
         removeAlert(alertsFile, id);
+        notifiedAgentIds.delete(id);
       }
     }
     for (const alert of currentDeadLoops.values()) {
