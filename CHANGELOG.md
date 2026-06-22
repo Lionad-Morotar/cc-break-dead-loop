@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-22
+
+### Changed
+
+- 强化 SessionStart hook 注入文案：将子代理后台运行从“建议”升级为强制规则，要求必须使用 `run_in_background:true`（后台异步模式），禁止使用默认的前台同步模式。
+- 同步 `README.md` 中 SessionStart 注入的描述与上述规则一致。
+- 更新 `tests/sessionStartAdvice.test.mjs` 断言以匹配新文案。
+
 ## [0.3.0] - 2026-06-18
 
 ### Added
