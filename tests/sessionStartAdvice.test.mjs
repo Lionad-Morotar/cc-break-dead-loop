@@ -9,9 +9,9 @@ describe('sessionStartAdvice', () => {
     assert.ok(advice.includes('run_in_background'));
   });
 
-  it('说明前台死循环会阻塞主代理、需手动 Esc 中断', () => {
+  it('说明前台同步模式会导致死循环风险', () => {
     assert.ok(advice.includes('前台'));
-    assert.ok(advice.includes('Esc'));
+    assert.ok(advice.includes('死循环'));
   });
 
   it('文案不含开发阶段/优先级标记（仅解释 Why）', () => {
