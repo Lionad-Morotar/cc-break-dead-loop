@@ -1,5 +1,7 @@
 # cc-break-dead-loop
 
+> 原本这个插件被我用于 CC + Kimi（K2.5 K2.6 K2.7），但对于此类在线模型，随着其能力变强，不再需要使用此类约束插件。
+
 Claude Code 插件：自动检测并打断 agent 的死循环 —— 主 agent 对同一未改动文件的连续 Read 死循环（双 Hook 拦截），以及子 agent 的工具调用死循环（watcher 常驻进程扫描）。
 
 ## 问题背景
