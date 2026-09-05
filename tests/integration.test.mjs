@@ -1,12 +1,45 @@
-import { describe, it } from 'vitest';
+import { afterAll, describe, it } from 'vitest';
 import assert from 'node:assert';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
+
+/**
+ * 全文件级 env 隔离：DATA_DIR/PROJECTS_DIR 钉到 temp 目录并关闭桌面通知。
+ *
+ * 保活接线让 SessionStart hook 与 setup-check 在心跳缺失时 spawn 真实 watcher；
+ * 不隔离则落在真实 ~/.data 与 ~/.claude/projects 上：GB 级历史语料让 watcher
+ * 满载扫描、真实通知弹窗，重 IO 还会把同套件其他用例拖过 5s 超时。
+ * 附带收益：PreToolUse 计数器状态不再写入真实 DATA_DIR。
+ */
+const isolatedRoot = mkdtempSync(join(tmpdir(), 'cc-break-integration-'));
+const ISOLATED_ENV = {
+  CC_BREAK_DATA_DIR: join(isolatedRoot, 'data'),
+  CC_BREAK_PROJECTS_DIR: join(isolatedRoot, 'projects'),
+  CC_BREAK_NOTIFY: '0',
+};
+mkdirSync(ISOLATED_ENV.CC_BREAK_DATA_DIR, { recursive: true });
+mkdirSync(ISOLATED_ENV.CC_BREAK_PROJECTS_DIR, { recursive: true });
+
+afterAll(() => {
+  // 清理隔离 env 下 hook spawn 的真实 watcher（SIGTERM 即可，被信号杀死时 exit code 为 null，不按 code 判死）
+  for (const file of ['watcher.pid', 'watcher-heartbeat.json']) {
+    try {
+      const raw = readFileSync(join(ISOLATED_ENV.CC_BREAK_DATA_DIR, file), 'utf8');
+      const pid = file.endsWith('.pid') ? Number(raw.trim()) : JSON.parse(raw).pid;
+      if (Number.isFinite(pid) && pid > 0) process.kill(pid, 'SIGTERM');
+    } catch {
+      // 未 spawn 或已死，忽略
+    }
+  }
+  rmSync(isolatedRoot, { recursive: true, force: true });
+});
 
 /**
  * 通过子进程运行 node-runner.mjs，模拟 stdin/stdout 协议
@@ -18,6 +51,7 @@ function runRunner(event, input) {
       event,
     ], {
       cwd: projectRoot,
+      env: { ...process.env, ...ISOLATED_ENV },
     });
 
     let stdout = '';
@@ -47,7 +81,10 @@ function runRunner(event, input) {
  */
 function runWithStdin(args, stdinData) {
   return new Promise((resolve, reject) => {
-    const child = spawn('node', args, { cwd: projectRoot });
+    const child = spawn('node', args, {
+      cwd: projectRoot,
+      env: { ...process.env, ...ISOLATED_ENV },
+    });
 
     let stdout = '';
     child.stdout.setEncoding('utf8');
