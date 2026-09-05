@@ -2,7 +2,7 @@
 
 ## 概述
 
-Claude Code 插件通过 `plugin/` 目录下的配置文件注册到 Hook 引擎。本插件注册 **5 个 hook entry**，覆盖两条检测线：线 1（主 agent Read）+ 线 2（子 agent 工具死循环）。
+Claude Code 插件通过 `plugin/` 目录下的配置文件注册到 Hook 引擎。本插件注册 **6 个 hook entry**，覆盖两条检测线：线 1（主 agent Read）+ 线 2（子 agent 工具死循环）。
 
 ## 文件结构
 
@@ -11,9 +11,9 @@ plugin/
 ├── .claude-plugin/
 │   └── plugin.json                    # 插件元数据
 ├── hooks/
-│   └── hooks.json                     # Hook 注册（5 entry）
-├── src/                               # 核心源码（11 模块）
-│   ├── index.mjs                      # Hook 入口（4 事件分发 + Stop 阻断）
+│   └── hooks.json                     # Hook 注册（6 entry）
+├── src/                               # 核心源码（13 模块）
+│   ├── index.mjs                      # Hook 入口（5 事件分发 + watcher 保活 + Stop 阻断）
 │   ├── config.mjs                     # 阈值 + 数据目录 + watcher 参数
 │   ├── handlers.mjs                   # 线 1：PostToolUse:Read + PreToolUse:Read
 │   ├── state.mjs                      # 线 1：主 agent 计数
@@ -23,7 +23,9 @@ plugin/
 │   ├── alertStore.mjs                 # 线 2：告警存储
 │   ├── deadLoopDetector.mjs           # 线 2：检测算法
 │   ├── hookInjector.mjs               # 线 2：注入逻辑
-│   └── subagentTranscriptReader.mjs   # 线 2：jsonl 解析
+│   ├── subagentTranscriptReader.mjs   # 线 2：jsonl 解析（含尾块时间戳读取）
+│   ├── notifier.mjs                   # 桌面通知（活跃死循环提醒 + watcher 复活通知）
+│   └── sessionStartAdvice.mjs         # SessionStart 注入文案（引导后台子代理）
 └── scripts/
     ├── node-runner.mjs                # Hook 运行时（stdin + Stop exit 2 + fallback）
     ├── setup-check.mjs                # Setup：环境检测 + watcher 保活
@@ -35,8 +37,8 @@ plugin/
 ```json
 {
   "name": "cc-break-dead-loop",
-  "version": "0.2.2",
-  "description": "Claude Code 插件：自动检测并打断 agent 的死循环",
+  "version": "0.3.1",
+  "description": "Claude Code 插件：双线死循环防护 —— 主 agent 连续 Read 同一未改动文件（双 Hook 拦截）+ 子 agent 工具调用死循环（watcher 常驻进程扫描，引导主 agent 调 TaskStopTool 终止）",
   "author": { "name": "仿生狮子" },
   "license": "MIT",
   "repository": "https://github.com/Lionad-Morotar/cc-break-dead-loop",
@@ -46,7 +48,7 @@ plugin/
 
 不含技术配置，仅 Claude Code 识别插件的基础信息。
 
-## hooks.json — Hook 注册（5 entry）
+## hooks.json — Hook 注册（6 entry）
 
 ```json
 {
@@ -62,7 +64,9 @@ plugin/
     "PreToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command",
       "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs\" pre-tool-use-read'" }] }],
     "Stop": [{ "matcher": "*", "hooks": [{ "type": "command",
-      "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs\" stop'" }] }]
+      "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs\" stop'" }] }],
+    "SessionStart": [{ "matcher": "*", "hooks": [{ "type": "command",
+      "command": "bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/node-runner.mjs\" session-start'" }] }]
   }
 }
 ```
@@ -71,11 +75,12 @@ plugin/
 
 | Hook | matcher | 命令 | 线 | 职责 |
 |------|---------|------|----|------|
-| Setup | `*` | setup-check.mjs | — | 环境检测 + 启动/保活 watcher |
+| Setup | `*` | setup-check.mjs | — | 环境检测 + 启动/保活 watcher（仅 `--init`/`--init-only`/`--maintenance` 特殊触发） |
+| SessionStart | `*` | node-runner session-start | — | 注入后台子代理规则 + watcher 保活 |
 | PostToolUse | `Read` | node-runner post-tool-use | 线 1 | 主 agent Read 后计数 |
-| PostToolUse | `*` | node-runner post-tool-use-any | 线 2 | 任意工具后注入子 agent 告警 |
+| PostToolUse | `*` | node-runner post-tool-use-any | 线 2 | 任意工具后注入子 agent 告警 + watcher 保活兜底 |
 | PreToolUse | `Read` | node-runner pre-tool-use-read | 线 1 | Read 前拦截（警告/阻断）|
-| Stop | `*` | node-runner stop | 线 2 | turn 结束时阻断（exit 2）|
+| Stop | `*` | node-runner stop | 线 2 | turn 结束时阻断（exit 2）+ watcher 保活兜底 |
 
 ### 动态路径解析（D2）
 

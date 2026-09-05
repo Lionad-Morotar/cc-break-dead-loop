@@ -2,7 +2,7 @@
 
 ## 概述
 
-`plugin/src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、4 事件分发、Stop 阻断、统一错误边界。它被两处调用：
+`plugin/src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、5 事件分发、watcher 保活接线、Stop 阻断、统一错误边界。它被两处调用：
 
 1. **模块入口**：`import { main } from '../src/index.mjs'`（由 `plugin/scripts/node-runner.mjs` 使用）
 2. **CLI 入口**：`node plugin/src/index.mjs <event>`（开发调试用）
@@ -25,11 +25,13 @@ flowchart TD
   C -->|pre-tool-use-read| F[preToolUseRead（线 1 拦截）]
   C -->|post-tool-use-any| G[postToolUseAnyAlert（线 2 注入）]
   C -->|stop| H[stopAlert（线 2 阻断）]
+  C -->|session-start| S[ensureWatcherAlive + sessionStartAdvice（注入后台子代理规则）]
   C -->|其他| D
   E --> R[result]
   F --> R
   G --> R
   H --> R
+  S --> R
   R --> J[console.log JSON.stringify]
   J --> K[exit 0]
   R -->|shouldBlock| L[stderr.write blockingError + exit 2]
@@ -37,7 +39,7 @@ flowchart TD
 
 ## 关键代码分析
 
-### main() 函数 — 4 事件分发
+### main() 函数 — 5 事件分发
 
 ```javascript
 export async function main(event, stdinData) {
@@ -57,6 +59,9 @@ export async function main(event, stdinData) {
       return postToolUseAnyAlert(input);   // 线 2：子 agent 告警注入
     case 'stop':
       return stopAlert(input);             // 线 2：Stop 阻断
+    case 'session-start':
+      ensureWatcherAlive();                // watcher 保活接线
+      return sessionStartAdvice();         // 注入后台子代理规则
     default:
       return { continue: true, suppressOutput: true };
   }
@@ -67,12 +72,15 @@ export async function main(event, stdinData) {
 - `JSON.parse` 失败时静默返回 `continue: true`（错误边界）
 - `stdinData || '{}'` 处理空输入
 - 同步 `switch` 分发，事件类型固定
+- `session-start` / `stop` / `post-tool-use-any` 入口调用 `ensureWatcherAlive`：心跳文件即节流器，心跳新鲜时开销仅一次文件读取，死亡/过期才 detached spawn 并弹复活通知
 - 线 1 事件委托 `handlers.mjs`，线 2 事件委托 `hookInjector.mjs`（经内部 `postToolUseAnyAlert` / `stopAlert` 包装）
 
 ### postToolUseAnyAlert — 线 2 PostToolUse 注入
 
 ```javascript
 function postToolUseAnyAlert(input) {
+  ensureWatcherAlive(); // 保活兜底：watcher 中途死亡在下一次工具调用即自愈
+
   const sessionId = input?.session_id;
   if (!sessionId) return { continue: true, suppressOutput: true };
 
@@ -101,6 +109,8 @@ PostToolUse:`*` Hook（任意工具执行后）触发。读 `alerts.json`，若�
 
 ```javascript
 function stopAlert(input) {
+  ensureWatcherAlive(); // 保活兜底：turn 边界是死循环告警的消费点
+
   const sessionId = input?.session_id;
   if (!sessionId) return { continue: true, suppressOutput: true };
 
@@ -189,7 +199,8 @@ stdin.on('end') 中的 try/catch
 
 | 测试场景 | 覆盖文件 | 断言 |
 |----------|----------|------|
-| 4 事件分发 | integration.test.mjs | stdout 返回预期 JSON |
+| 5 事件分发 | integration.test.mjs | stdout 返回预期 JSON |
+| 保活接线（session-start / stop / post-tool-use-any）| watcherKeepalive.test.mjs | 心跳新鲜不 spawn / 过期自愈重启 / 复活通知 |
 | 无效 event | integration.test.mjs | 返回 `{ continue: true }` |
 | stdin 空/非法 | integration.test.mjs | 不崩溃，返回 `{ continue: true }` |
 | Stop 阻断 exit 2 | integration.test.mjs | `code === 2`，stderr 含 blockingError |

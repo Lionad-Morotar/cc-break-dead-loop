@@ -54,15 +54,14 @@
 ## CI/CD & Deployment
 
 **Hosting：**
-- 无 — 当前为手动安装（复制 `plugin/` 目录到 `~/.claude/plugins/`）
+- 无自托管 — 经中心集市 `Lionad-Morotar/claude-plugins` 分发（`/plugin marketplace add` 时 git clone 到 `~/.claude/plugins/marketplaces/`）
 
 **CI Pipeline：**
 - 无 — 未配置 GitHub Actions 或其他 CI 服务
 - 测试命令：`npm test`（= `vitest run`，见 `package.json` `scripts.test` 与 `vitest.config.mjs`）
 
 **Distribution：**
-- 当前：手动复制安装（见 `README.md`）
-- 计划中：npm 全局安装（见 `TODOS.md` 第 2 项）
+- 中心集市：`/plugin marketplace add Lionad-Morotar/claude-plugins` + `/plugin install cc-break-dead-loop@lionad-morotar`（见 `README.md`）
 
 ## Environment Configuration
 

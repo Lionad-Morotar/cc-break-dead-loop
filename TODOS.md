@@ -9,21 +9,21 @@
 **Pros:** 适应不同用户的工作流习惯；无需修改代码即可调整行为。
 **Cons:** 需要配置文件解析逻辑和默认值处理。
 
-**Context:** 当前 `src/config.ts` 中硬编码 `WARN_THRESHOLD = 3` 和 `BLOCK_THRESHOLD = 5`。预期通过 `~/.config/cc-break-dead-loop/config.json` 或环境变量覆盖。
+**Context:** 当前 `plugin/src/config.mjs` 中硬编码 `WARN_THRESHOLD = 3` 和 `BLOCK_THRESHOLD = 5`。预期通过 `~/.config/cc-break-dead-loop/config.json` 或环境变量覆盖。
 
 **Depends on:** 无（可在任何时间实现）。
 
 ---
 
-## 2. npm / CI 分发 Pipeline
+## 2. CI 测试 Pipeline
 
-**What:** 添加 npm 包发布和 GitHub Actions CI/CD workflow。
+**What:** 添加 GitHub Actions CI workflow（push / PR 跑 vitest 全量测试）。
 
-**Why:** 当前手动复制 `plugin/` 目录到 Claude Code plugins 目录的安装方式容易出错，且不利于版本管理和自动更新。
+**Why:** 当前测试仅本地执行，多宿主协作（不同 Agent runtime 提交）缺一道统一的质量门。
 
-**Pros:** 用户可通过 `npm install -g cc-break-dead-loop` 安装；自动获取更新；版本锁定。
-**Cons:** 需要维护 npm 账号、CI 配置、版本管理流程。
+**Pros:** 每次提交有测试阻断信号；为中心集市条目自动同步（version/ref）打基础。
+**Cons:** 需要维护 CI 配置与 minutes 消耗。
 
-**Context:** Claude Code 插件生态暂不成熟，npm 分发需要验证插件加载机制是否支持 node_modules 路径。当前安装说明在 README.md 中描述为手动复制。
+**Context:** 插件已经由中心集市 `Lionad-Morotar/claude-plugins` 分发（`/plugin marketplace add` + `install`），旧的 npm 全局安装设想随 NPX CLI 一并废弃——插件经 marketplace git clone 安装，不走 npm。
 
-**Depends on:** 核心功能稳定、README 安装文档完成。
+**Depends on:** 无。

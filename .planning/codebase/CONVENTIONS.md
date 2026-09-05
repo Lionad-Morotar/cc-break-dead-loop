@@ -120,13 +120,15 @@ try {
   - `utils.mjs` — 纯函数工具（`sanitizeName`、`getProjectName`）
   - `state.mjs` — 主 agent Read 计数状态管理
   - `handlers.mjs` — 主 agent 检测/拦截 handler（双 Hook）
-  - `index.mjs` — Hook 入口与 4 事件分发
+  - `index.mjs` — Hook 入口、5 事件分发与 watcher 保活接线
   - `watcher.mjs` — watcher 扫描协调（transcript → 检测 → 告警同步）
   - `watcherLifecycle.mjs` — watcher 进程决策（`decideAction`）与 spawn（`ensureWatcherRunning`）
   - `alertStore.mjs` — 子 agent 死循环告警存储（watcher 写 / hooks 读）
   - `deadLoopDetector.mjs` — 死循环检测算法（纯函数）
   - `hookInjector.mjs` — Hook 注入措辞生成（纯函数）
-  - `subagentTranscriptReader.mjs` — subagent jsonl 解析
+  - `subagentTranscriptReader.mjs` — subagent jsonl 解析（含尾块时间戳读取）
+  - `notifier.mjs` — 桌面通知（活跃死循环提醒 + watcher 复活通知）
+  - `sessionStartAdvice.mjs` — SessionStart 注入文案（引导后台子代理）
 
 **无 barrel 文件:** 直接导入具体模块，不通过索引文件聚合导出
 

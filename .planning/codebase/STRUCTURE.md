@@ -84,14 +84,14 @@ cc-break-dead-loop/
 **入口点:**
 - `plugin/src/index.mjs`: Hook 逻辑入口，导出 `main(event, stdinData)`，分发 5 个事件（post-tool-use / pre-tool-use-read / post-tool-use-any / stop / session-start），支持直接运行
 - `plugin/scripts/node-runner.mjs`: Hook 运行时入口，被 `hooks.json` 调用，处理 Stop 的 `shouldBlock` → `exit(2)`
-- `plugin/scripts/setup-check.mjs`: Setup Hook 入口（仅 `--init`/`--maintenance` 特殊触发），环境检测 + `ensureWatcherRunning` 保活
+- `plugin/scripts/setup-check.mjs`: Setup Hook 入口（仅 `--init`/`--init-only`/`--maintenance` 特殊触发），环境检测 + `ensureWatcherRunning` 保活
 - `plugin/scripts/watcher.mjs`: watcher 常驻进程入口，由 hook 保活接线 detached spawn
 
 **配置:**
 - `plugin/src/config.mjs`: 阈值（WARN=3 / BLOCK=5）、数据目录、watcher 参数（WINDOW=20 / THRESHOLD=5 / SCAN=5000ms / STALE=30000ms）
 - `package.json`: 项目元数据、`scripts.test = "vitest run"`、`vitest` devDep
 - `plugin/.claude-plugin/plugin.json`: 插件元数据
-- `plugin/hooks/hooks.json`: Hook 注册（record 格式，5 个 hook entry）
+- `plugin/hooks/hooks.json`: Hook 注册（record 格式，6 个 hook entry）
 - `vitest.config.mjs`: Vitest 配置
 
 **核心逻辑:**

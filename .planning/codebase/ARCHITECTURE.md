@@ -29,7 +29,7 @@
 - Depends on: `plugin/src/index.mjs`
 
 **入口/分发层（Entry）:**
-- Purpose: stdin/stdout 协议处理、4 事件分发、统一错误边界
+- Purpose: stdin/stdout 协议处理、5 事件分发、watcher 保活接线、统一错误边界
 - Location: `plugin/src/index.mjs`
 - Contains: `main(event, stdinData)`、`postToolUseAnyAlert`、`stopAlert`、`sessionStartAdvice`、`ensureWatcherAlive`、直接执行入口
 - Depends on: `handlers.mjs`、`hookInjector.mjs`、`config.mjs`
@@ -103,7 +103,7 @@
 
 **保活流（任意 Hook 事件）:**
 
-1. SessionStart（matcher `*`）/ Stop / PostToolUse:`*` hook 触发，`plugin/src/index.mjs` 的 `ensureWatcherAlive` 调用 `ensureWatcherRunning`；`Setup` Hook（`setup-check.mjs`，含 Node.js >= 18 检测）仅 `--init`/`--maintenance` 特殊触发时接线
+1. SessionStart（matcher `*`）/ Stop / PostToolUse:`*` hook 触发，`plugin/src/index.mjs` 的 `ensureWatcherAlive` 调用 `ensureWatcherRunning`；`Setup` Hook（`setup-check.mjs`，含 Node.js >= 18 检测）仅 `--init`/`--init-only`/`--maintenance` 特殊触发时接线
 2. 读 `watcher-heartbeat.json` → `decideAction`：
    - 心跳新鲜（`now - ts <= 30s`）→ `none`（不重启，保活检查开销仅一次文件读取）
    - 心跳过期/缺失 → `start`/`restart`（`restart` 时按 `watcher.pid` kill 旧进程并发复活桌面通知）
@@ -178,7 +178,7 @@
 
 **Plugin Hook Entry:**
 - Location: `plugin/hooks/hooks.json`
-- Triggers: Setup（仅 --init/--maintenance 特殊触发）、SessionStart[`*`]、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
+- Triggers: Setup（仅 --init/--init-only/--maintenance 特殊触发）、SessionStart[`*`]、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
 
 **直接执行入口:**
 - Location: `plugin/src/index.mjs`（`import.meta.url === file://...` 分支）
@@ -207,8 +207,8 @@
 - Setup 永不阻断：`setup-check.mjs` 无论结果 `exit(0)`
 
 **Watcher 降级:**
-- watcher 启动失败：`setup-check.mjs` catch 后仅 `console.error`，不阻断 Claude Code
-- watcher 崩溃：心跳过期，下次 Setup 时 `decideAction` 返回 `restart`，自动拉起
+- watcher 启动失败：`ensureWatcherAlive`（hook 保活接线）与 `setup-check.mjs` catch 后静默降级，不阻断 hook 主流程
+- watcher 崩溃：心跳过期，下次任意 hook 事件（SessionStart / Stop / PostToolUse:`*`）时 `ensureWatcherAlive` 判 `restart` 自动拉起并发复活通知
 - watcher 扫描异常：`findAllAgentJsonls` / `readRecentToolCalls` 内部 try/catch，跳过损坏文件
 - 告警读写失败：`alertStore` 原子写入 + 读失败返回空数组，不影响 Hook 放行
 

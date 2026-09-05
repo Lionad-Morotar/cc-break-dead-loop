@@ -23,15 +23,15 @@
 - Fix approach: 使用文件锁（如 `proper-lockfile`）或基于目录的互斥锁；但当前 Node.js 零依赖约束限制了方案选择
 
 ### hooks.json bash 路径解析的脆弱性
-- Issue: `hooks.json` 使用 `$(dirname "$0")/../..` 动态解析插件根目录，依赖 bash 执行环境
+- Issue: `hooks.json` 使用 `bash -c 'node "${CLAUDE_PLUGIN_ROOT}/..."'` 包装，依赖 Claude Code 注入的 `CLAUDE_PLUGIN_ROOT` 变量与 bash 执行环境
 - Files: `plugin/hooks/hooks.json`
 - Impact: 如果 Claude Code 的 hook 执行环境变更（如改用 sh 或 zsh 的兼容模式），路径解析可能失败
-- Fix approach: 在 Setup 钩子中验证 `PLUGIN_ROOT` 解析结果，失败时输出明确错误
+- Fix approach: 在 Setup 钩子中验证 `CLAUDE_PLUGIN_ROOT` 解析结果，失败时输出明确错误
 
 ## Known Bugs
 
 ### 未检测到的问题
-- 当前测试全部通过（135/135，15 文件），无已知运行时 bug
+- 当前测试全部通过（136/136，12 文件），无已知运行时 bug
 
 ### Subagent/Teammate 无视 permissionDecision: deny（已部分缓解）
 - Claude Code 已知 bug（#25000/#34692）：subagent 和 teammate 类型 agent 无视 hook 的 `permissionDecision: 'deny'` 响应
@@ -146,9 +146,9 @@
 - Blocks: 长期运行后磁盘占用增长
 - 优先级: 低
 
-### npm / CI 分发
-- Problem: 当前仅支持手动复制 `plugin/` 目录安装
-- Blocks: 无法通过 npm 自动安装和更新
+### CI 测试 pipeline
+- Problem: 测试仅本地执行，仓库无 CI 门禁
+- Blocks: 多宿主协作提交缺统一质量门；中心集市条目的 version/ref 同步依赖人工
 - 优先级: 中（见 TODOS.md #2）
 
 ## Test Coverage Gaps

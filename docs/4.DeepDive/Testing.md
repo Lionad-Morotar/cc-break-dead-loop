@@ -133,19 +133,6 @@ graph TD
 | setup-check OK | stdout 含 "OK" |
 | 直接运行 index.mjs CLI | 正确处理 stdin |
 
-## CLI 测试
-
-| 文件 | 关键场景 |
-|------|----------|
-| `cli/index.test.mjs` | parseArgs / showHelp / showVersion |
-| `cli/install.test.mjs` | 全新安装 / 覆盖安装 / CC 未安装报错 / 配置格式异常 / enabledPlugins 缺失创建 |
-| `cli/uninstall.test.mjs` | 正常卸载 / --purge / 未安装 / enabledPlugins 清空 |
-| `cli/status.test.mjs` | 全 ✓ / 未安装 / 部分异常 |
-| `cli/paths.test.mjs` | 各路径常量 / CLAUDE_CONFIG_DIR 环境变量 |
-| `cli/fs.test.mjs` | readJsonFile / writeJsonFile / copyDir（深度限制、跳过符号链接）|
-
-CLI 测试用 `mkdtempSync(tmpdir())` + `process.env.CLAUDE_CONFIG_DIR = tmpDir` 隔离，不污染真实配置。
-
 ## 测试设计原则
 
 ### 1. 纯函数优先
@@ -168,7 +155,7 @@ const tmpDir = mkdtempSync(join(tmpdir(), `cc-break-dead-loop-<scope>-test-${Dat
 | 文件系统（state、alertStore、watcher）| 真实 tmp 目录 |
 | 定时器（watcher）| `vi.useFakeTimers` + `vi.advanceTimersByTime` |
 | 进程 spawn（lifecycle）| `vi.mock('node:child_process')` |
-| CLI | 真实 tmp `CLAUDE_CONFIG_DIR` |
+| 保活接线（keepalive）| 真实 spawn + temp env（`CC_BREAK_DATA_DIR`/`CC_BREAK_PROJECTS_DIR` 钉 temp dir，PATH shim 假 osascript/notify-send 断言通知）|
 
 ### 4. 子进程集成测试
 
@@ -185,7 +172,7 @@ const tmpDir = mkdtempSync(join(tmpdir(), `cc-break-dead-loop-<scope>-test-${Dat
 | `utils.mjs` | state.test.mjs | sanitizeName / getProjectName |
 | `state.mjs` | state.test.mjs | 全部导出函数 + 并发 |
 | `handlers.mjs` | handlers.test.mjs | isWastedCall / postToolUse / preToolUseRead |
-| `index.mjs` | integration.test.mjs | 4 事件分发 / Stop 阻断 / 错误边界 |
+| `index.mjs` | integration.test.mjs + watcherKeepalive.test.mjs | 5 事件分发 / Stop 阻断 / 错误边界 / 保活接线 |
 | `node-runner.mjs` | integration.test.mjs | 协议 / Stop exit 2 / 降级 |
 | `setup-check.mjs` | integration.test.mjs | 环境检测 |
 | `watcher.mjs` | watcher.test.mjs | 扫描协调 / 增量同步 / 心跳 |
@@ -194,5 +181,6 @@ const tmpDir = mkdtempSync(join(tmpdir(), `cc-break-dead-loop-<scope>-test-${Dat
 | `alertStore.mjs` | alertStore.test.mjs | 告警读写 / 并发 |
 | `hookInjector.mjs` | hookInjector.test.mjs | 注入措辞 / 最严重选取 |
 | `subagentTranscriptReader.mjs` | subagentTranscriptReader.test.mjs | jsonl 解析容错 |
-| `cli/*` | cli/*.test.mjs | install / uninstall / status / paths / fs / index |
-| **总计** | **15 文件** | **135 项** |
+| `notifier.mjs` | notifier.test.mjs | 桌面通知平台分发（依赖注入）|
+| `sessionStartAdvice.mjs` | sessionStartAdvice.test.mjs | SessionStart 注入文案 |
+| **总计** | **12 文件** | **136 项** |
