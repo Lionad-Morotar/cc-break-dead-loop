@@ -35,7 +35,8 @@ PreToolUse:Read ──→ 检查计数器
 
 线 2：子 agent 死循环（watcher + 注入）
 ─────────────────────────────────────
-Setup Hook ──→ 启动/保活 watcher 常驻进程（detached）
+任意 Hook（SessionStart / Stop / PostToolUse:*）──→ 保活 watcher 常驻进程（detached）
+    │  心跳新鲜 → 跳过；心跳超时 → （重）启。Setup Hook 仅 --init/--maintenance 特殊触发时生效
     │
     ▼
 watcher（每 5s）
@@ -96,12 +97,14 @@ Stop Hook ──→ 读 alerts.json → 返回 blockingError（exit 2，强制�
 
 ### 验证安装
 
-重启 Claude Code，启动日志中应出现：
+重启 Claude Code（新开会话即触发 SessionStart hook，watcher 自动拉起），随后确认常驻进程存活：
 
+```bash
+cat ~/.data/cc-break-dead-loop/watcher-heartbeat.json   # ts 应在最近 30 秒内（毫秒时间戳）
+ps -p $(cat ~/.data/cc-break-dead-loop/watcher.pid)      # 应显示 watcher.mjs 进程
 ```
-[cc-break-dead-loop] Setup: OK (Node.js v22.22.1)
-[cc-break-dead-loop] Watcher start (pid=12345)
-```
+
+watcher 若中途死亡（睡眠 / OOM / 手动 kill），会在下一次 SessionStart、Stop 或任意工具调用 hook 时自愈重启，无需手动干预。
 
 ## 更新
 
@@ -118,7 +121,7 @@ Stop Hook ──→ 读 alerts.json → 返回 blockingError（exit 2，强制�
 ## 开发测试
 
 ```bash
-# 运行全部测试（135 tests，15 files）
+# 运行全部测试（165 tests，18 files）
 npm test                         # = vitest run
 
 # watch 模式（TDD）
