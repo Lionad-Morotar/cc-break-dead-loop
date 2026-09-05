@@ -204,6 +204,8 @@ detached spawn（`stdio: 'ignore'`, `unref`），不依赖父进程。立即扫�
 
 Marketplace 配置由中心集市仓库 `Lionad-Morotar/claude-plugins` 的 `.claude-plugin/marketplace.json` 定义，本插件条目以 `source: github` 指向本仓库并用 `ref` 锁定发布 tag。
 
+本仓库以 git submodule 方式在 `packages/claude-plugins` 绑定该集市仓库，条目的 version/ref 更新随本仓库发版流程在子模块内提交。推送顺序防双向引用悬空：主仓 release commit 与 tag 先推 → 子模块条目（ref 指向已存在的 tag）再推 → 主仓 gitlink bump（指向已推送的子模块 commit）最后单独提交推送。
+
 ### 验证安装
 
 重启 Claude Code（新开会话即触发 SessionStart hook，watcher 自动拉起），随后确认常驻进程存活：

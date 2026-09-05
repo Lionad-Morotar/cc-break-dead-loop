@@ -1,0 +1,3 @@
+[submodule "packages/claude-plugins"]
+	path = packages/claude-plugins
+	url = git@github.com:Lionad-Morotar/claude-plugins.git

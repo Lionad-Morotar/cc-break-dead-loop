@@ -42,6 +42,8 @@ cc-break-dead-loop/
 │   ├── notifier.test.mjs          # 桌面通知平台分发（依赖注入）
 │   ├── sessionStartAdvice.test.mjs # SessionStart 注入文案
 │   └── subagentTranscriptReader.test.mjs # jsonl 解析容错 + 尾块时间戳读取
+├── packages/
+│   └── claude-plugins/            # git submodule：中心插件集市仓库（Lionad-Morotar/claude-plugins）
 ├── docs/                          # 深度文档（Project / Architecture / Workflow / DeepDive）
 ├── .planning/codebase/            # 本目录：codebase mapping 文档（7 份）
 ├── vitest.config.mjs              # Vitest 配置（include tests/**/*.test.mjs）
@@ -71,6 +73,10 @@ cc-break-dead-loop/
 - Purpose: 测试套件
 - Contains: 12 个测试文件，使用 Vitest
 - Key files: `integration.test.mjs`（stdin/stdout 协议）、`watcher.test.mjs`（fake timers）、`watcherLifecycle.test.mjs`（spawn mock）
+
+**`packages/claude-plugins/`:**
+- Purpose: 中心插件集市仓库（git submodule，ssh 远端），本插件的 marketplace 条目（`.claude-plugin/marketplace.json` 的 version/ref/description）在此维护
+- Committed: Yes（gitlink 指针；未设 `ignore = all`，子仓提交后须在主仓 bump 指针，推送顺序见 Plugin Registration DeepDive）
 
 **`docs/`:**
 - Purpose: 项目深度文档（Project / Architecture / Workflow / DeepDive）+ 历史需求/计划
