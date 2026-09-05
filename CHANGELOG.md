@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-06
+
+### Fixed
+
+- watcher 在普通交互会话中无人拉起导致子代理死循环防线整体失效：保活接线从仅 `--init`/`--maintenance` 特殊触发的 Setup hook 迁移到 SessionStart（matcher `*`）+ Stop / PostToolUse:`*` 兜底，心跳超时即在下一任意 hook 事件自愈重启。
+
+### Added
+
+- watcher 死亡自愈桌面通知：心跳超时自动重启后弹「监控已自愈」通知，提示中断窗口内的子代理死循环可能漏检；首启不打扰，`CC_BREAK_NOTIFY=0` 一并关闭。
+
+### Changed
+
+- watcher 扫描增量化：mtime 门控跳过停滞 transcript（零内容读取），大文件改读尾部 256KB 倒序找时间戳（未命中回退全量），1GB 语料单轮扫描由约 8-9s 降至 60-70ms。
+- 插件元数据条目移入中心集市仓库 `Lionad-Morotar/claude-plugins`（以 submodule 绑定在 `packages/claude-plugins`），version 与 source.ref 随发版锁定 tag。
+- [internal] 集成与保活测试以 `CC_BREAK_DATA_DIR`/`CC_BREAK_PROJECTS_DIR` 钉临时目录隔离，杜绝测试子进程拉起真实 watcher 污染运行状态。
+
+### Removed
+
+- NPX CLI 安装路径废弃：删除 `src/cli`（install/uninstall/status）、根 `.claude-plugin/marketplace.json` 与对应测试（-1.6k 行），中心集市 `/plugin install cc-break-dead-loop@lionad-morotar` 成为唯一安装入口。
+
 ## [0.3.1] - 2026-06-22
 
 ### Changed
