@@ -200,4 +200,36 @@ describe('readLastActivityTimestamp', () => {
     const ts = readLastActivityTimestamp(jsonlFile);
     assert.strictEqual(ts, Date.parse('2026-06-14T10:00:00.000Z'));
   });
+
+  it('大于尾块的文件：时间戳在尾部 → 命中', () => {
+    // ~340KB 无时间戳垫材 + 末尾时间戳行，超过 256KB 尾块阈值
+    const padding = Array.from({ length: 2000 }, () =>
+      JSON.stringify({ type: 'attachment', payload: 'x'.repeat(150) }),
+    );
+    const tsLine = JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:05.000Z' });
+    writeFileSync(jsonlFile, [...padding, tsLine].join('\n') + '\n');
+
+    const ts = readLastActivityTimestamp(jsonlFile);
+    assert.strictEqual(ts, Date.parse('2026-06-14T10:00:05.000Z'));
+  });
+
+  it('尾块内无时间戳但更早处有 → 全量回退命中（旧语义不变）', () => {
+    const tsLine = JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' });
+    const padding = Array.from({ length: 2500 }, () =>
+      JSON.stringify({ type: 'attachment', payload: 'x'.repeat(150) }),
+    );
+    writeFileSync(jsonlFile, [tsLine, ...padding].join('\n') + '\n');
+
+    const ts = readLastActivityTimestamp(jsonlFile);
+    assert.strictEqual(ts, Date.parse('2026-06-14T10:00:00.000Z'));
+  });
+
+  it('超长末行（单行超过尾块）→ 截断行跳过，前一行时间戳命中', () => {
+    const tsLine = JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' });
+    const hugeLine = JSON.stringify({ type: 'user', message: { content: 'y'.repeat(300 * 1024) } });
+    writeFileSync(jsonlFile, [tsLine, hugeLine].join('\n') + '\n');
+
+    const ts = readLastActivityTimestamp(jsonlFile);
+    assert.strictEqual(ts, Date.parse('2026-06-14T10:00:00.000Z'));
+  });
 });

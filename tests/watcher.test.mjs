@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach, vi } from 'vitest';
 import assert from 'node:assert';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createWatcher } from '../plugin/src/watcher.mjs';
@@ -333,5 +333,46 @@ describe('Watcher', () => {
     assert.strictEqual(calls.length, 0, 'notifyEnabled=false 应跳过通知');
     // 但告警仍正常写入（通知与告警注入是两路）
     assert.strictEqual(getAlertsForSession(alertsFile, 'sess').length, 1);
+  });
+
+  it('mtime 超过 staleMs → 整读跳过不告警（内容无时间戳也不再保守读全文）', () => {
+    // 无 timestamp 的循环 fixture：旧实现读全文判 null → 保守视为活跃 → 告警；
+    // mtime 门控后：文件系统写入时间已停滞 → 直接跳过，零内容读取
+    const file = writeAgentJsonl(
+      projectsDir, 'proj', 'sess-mtime', 'agent-stale-mtime',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' })),
+    );
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(file, old, old);
+
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+    });
+
+    watcher.scanOnce();
+    assert.deepStrictEqual(getAlertsForSession(alertsFile, 'sess-mtime'), []);
+  });
+
+  it('mtime 门控下既有告警被清除（停滞循环的告警同步语义不变）', () => {
+    const file = writeAgentJsonl(
+      projectsDir, 'proj', 'sess-gone', 'agent-gone',
+      Array(6).fill(assistantLine('Read', { file_path: '/a' })),
+    );
+    addAlert(alertsFile, {
+      taskId: 'agent-gone', sessionId: 'sess-gone',
+      toolName: 'Read', paramFingerprint: 'fp', repeatCount: 6,
+      detectedAt: new Date().toISOString(),
+    });
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(file, old, old);
+
+    const watcher = createWatcher({
+      projectsDir, alertsFile, heartbeatFile,
+      windowSize: 20, threshold: 5, staleMs: 15_000,
+    });
+
+    watcher.scanOnce();
+    assert.deepStrictEqual(getAlertsForSession(alertsFile, 'sess-gone'), [], '停滞循环的既有告警应被清除');
   });
 });

@@ -7,7 +7,7 @@
  *   - 持续/新增的死循环 → addAlert（upsert 更新 detectedAt）
  */
 
-import { readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readdirSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { readRecentToolCalls, readLastActivityTimestamp } from './subagentTranscriptReader.mjs';
 import { detectDeadLoop } from './deadLoopDetector.mjs';
@@ -99,6 +99,19 @@ export function createWatcher(options) {
 
     for (const jsonlPath of jsonls) {
       const { agentId, sessionId } = parseAgentFromPath(jsonlPath);
+      // mtime 门控：文件系统写入时间已停滞则直接跳过，零内容读取。
+      // 语料随历史会话无限增长（可达 GB 级），内容整读是扫描的绝对大头；
+      // mtime ≥ 文件内任何行的 timestamp，mtime 新鲜时不会漏判停滞
+      let mtimeMs;
+      try {
+        mtimeMs = statSync(jsonlPath).mtimeMs;
+      } catch {
+        continue; // readdir 与 stat 竞态间文件已消失
+      }
+      if (Date.now() - mtimeMs > staleMs) {
+        // 停滞文件不放入 currentDeadLoops → 既有告警会触发 removeAlert 清除
+        continue;
+      }
       const lastTs = readLastActivityTimestamp(jsonlPath);
       // null（无 timestamp）视为活跃：生产 Claude Code 总写 timestamp，null 是异常，
       // 保守报死循环（宁误报不漏报）
