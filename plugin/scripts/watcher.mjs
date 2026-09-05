@@ -1,7 +1,8 @@
 /**
  * Watcher 常驻进程入口
  *
- * 由 Setup hook 通过 ensureWatcherRunning detached spawn 启动。
+ * 由 hook 进程经 ensureWatcherRunning detached spawn 启动（保活接线在
+ * SessionStart/Stop/PostToolUse，心跳超时才会真正 spawn）。
  * 立即扫描一次，随后按 WATCHER_SCAN_INTERVAL_MS 定时扫描。
  * 通过 stdin.resume() + 信号保持进程存活。
  */
