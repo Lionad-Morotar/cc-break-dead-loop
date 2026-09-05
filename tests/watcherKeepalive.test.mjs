@@ -10,6 +10,7 @@ import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -88,15 +89,27 @@ describe('watcher keepalive: hook 接线', () => {
   let projectsDir;
   let heartbeatFile;
   let pidFile;
+  let binDir;
+  let markerFile;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'cc-break-keepalive-'));
     dataDir = join(tmpDir, 'data');
     projectsDir = join(tmpDir, 'projects');
+    binDir = join(tmpDir, 'bin');
     mkdirSync(dataDir, { recursive: true });
     mkdirSync(projectsDir, { recursive: true });
+    mkdirSync(binDir, { recursive: true });
     heartbeatFile = join(dataDir, 'watcher-heartbeat.json');
     pidFile = join(dataDir, 'watcher.pid');
+    markerFile = join(tmpDir, 'notify-marker.log');
+    // PATH shim：假 osascript 把参数追加到 marker 文件，
+    // 用于在不弹真实桌面通知的情况下断言 notify 接线是否触发
+    writeFileSync(
+      join(binDir, 'osascript'),
+      `#!/bin/sh\nprintf '%s\\n' "$@" >> '${markerFile}'\n`,
+    );
+    chmodSync(join(binDir, 'osascript'), 0o755);
   });
 
   afterEach(() => {
@@ -117,12 +130,20 @@ describe('watcher keepalive: hook 接线', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function testEnv() {
+  function testEnv(overrides = {}) {
     return {
       CC_BREAK_DATA_DIR: dataDir,
       CC_BREAK_PROJECTS_DIR: projectsDir,
+      PATH: `${binDir}:${process.env.PATH}`,
       CC_BREAK_NOTIFY: '0',
+      ...overrides,
     };
+  }
+
+  /** 通知开启的 env（CC_BREAK_NOTIFY 键必须缺席而非 undefined，故用解构剔除） */
+  function notifyOnEnv() {
+    const { CC_BREAK_NOTIFY: _ignored, ...rest } = testEnv();
+    return rest;
   }
 
   it('session-start: 无心跳 → spawn watcher，心跳出现且 pid 存活', async () => {
@@ -186,4 +207,49 @@ describe('watcher keepalive: hook 接线', () => {
     const hooks = readJson(join(projectRoot, 'plugin/hooks/hooks.json'));
     assert.strictEqual(hooks.hooks.SessionStart[0].matcher, '*');
   });
+
+  it('stop: 心跳过期自愈 + 通知开启 → 假 osascript 被调（复活通知一次）', async () => {
+    writeFileSync(heartbeatFile, JSON.stringify({ pid: 99999999, ts: Date.now() - 60_000 }));
+    writeFileSync(pidFile, '99999999');
+
+    const { code } = await runRunner('stop', { session_id: 'sess-n' }, notifyOnEnv());
+    assert.strictEqual(code, 0);
+
+    const revived = await waitFor(() => {
+      const hb = readJson(heartbeatFile);
+      return hb !== null && hb.pid !== 99999999 && isAlive(hb.pid);
+    });
+    assert.ok(revived, 'watcher 应自愈');
+    assert.ok(existsSync(markerFile), '自愈路径应触发桌面通知');
+    assert.ok(
+      readFileSync(markerFile, 'utf8').includes('display notification'),
+      'marker 应记录 osascript 通知脚本',
+    );
+  }, 25_000);
+
+  it('stop: 心跳过期自愈 + CC_BREAK_NOTIFY=0 → 自愈但不通知', async () => {
+    writeFileSync(heartbeatFile, JSON.stringify({ pid: 99999999, ts: Date.now() - 60_000 }));
+    writeFileSync(pidFile, '99999999');
+
+    await runRunner('stop', { session_id: 'sess-n0' }, testEnv());
+
+    const revived = await waitFor(() => {
+      const hb = readJson(heartbeatFile);
+      return hb !== null && hb.pid !== 99999999 && isAlive(hb.pid);
+    });
+    assert.ok(revived, 'watcher 应自愈');
+    assert.ok(!existsSync(markerFile), '通知关闭时不应调用 osascript');
+  }, 25_000);
+
+  it('session-start: 首启（无心跳文件）+ 通知开启 → spawn 但不通知', async () => {
+    const { code } = await runRunner('session-start', {}, notifyOnEnv());
+    assert.strictEqual(code, 0);
+
+    const spawned = await waitFor(() => {
+      const hb = readJson(heartbeatFile);
+      return hb !== null && isAlive(hb.pid);
+    });
+    assert.ok(spawned, 'watcher 应被拉起');
+    assert.ok(!existsSync(markerFile), '首启属正常初始化，不应惊动用户');
+  }, 25_000);
 });

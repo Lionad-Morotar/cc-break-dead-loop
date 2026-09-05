@@ -1,5 +1,6 @@
 /**
- * 桌面通知：watcher 检测到活跃死循环时提醒用户手动中断
+ * 桌面通知：watcher 检测到活跃死循环时提醒用户手动中断；
+ * watcher 死亡自愈时提醒用户防线曾中断
  *
  * 缓解前台同步子代理死循环的架构死结——主 agent 阻塞时插件够不到它，
  * 只能把死循环信号送到用户眼前。watcher 是 detached 进程，无控制终端，
@@ -50,5 +51,39 @@ export function notifyDeadLoop(info, deps = {}) {
     // 其他平台（win32 等）：静默跳过
   } catch {
     // 通知失败绝不影响 watcher
+  }
+}
+
+/**
+ * watcher 死亡自愈重启成功时发桌面通知
+ *
+ * 仅 restart 路径（心跳超时复活）调用；start（首启，无心跳文件）不通知——
+ * 防线初始化对用户无感，防线中断才需要感知：中断窗口内的子代理死循环
+ * 可能漏检，用户有权知道这段时间防线不在岗。
+ * 通过 deps 注入 exec/platform 便于测试（沿 notifyDeadLoop 依赖注入风格）。
+ *
+ * @param {{ exec?: Function, platform?: string }} [deps]
+ */
+export function notifyWatcherRevived(deps = {}) {
+  const exec = deps.exec ?? defaultExec;
+  const platform = deps.platform ?? process.platform;
+  const title = '[cc-break-dead-loop] 监控已自愈';
+  const message =
+    '死循环监控进程（watcher）心跳超时，已自动重启。' +
+    '中断期间子代理死循环可能漏检。';
+
+  try {
+    if (platform === 'darwin') {
+      exec(
+        'osascript',
+        ['-e', `display notification "${escape(message)}" with title "${escape(title)}"`],
+        { timeout: 3000 },
+      );
+    } else if (platform === 'linux') {
+      exec('notify-send', [title, message], { timeout: 3000 });
+    }
+    // 其他平台（win32 等）：静默跳过
+  } catch {
+    // 通知失败绝不影响 hook 主流程
   }
 }

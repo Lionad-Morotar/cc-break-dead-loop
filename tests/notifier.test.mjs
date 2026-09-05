@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert';
-import { notifyDeadLoop } from '../plugin/src/notifier.mjs';
+import { notifyDeadLoop, notifyWatcherRevived } from '../plugin/src/notifier.mjs';
 
 describe('notifier', () => {
   it('darwin → 调 osascript display notification，含 agentType/toolName/repeatCount', () => {
@@ -56,5 +56,37 @@ describe('notifier', () => {
     const script = calls[0][1][1];
     // 原始裸双引号应被转义为 \"，不能出现 a"x 这样的裸引号序列
     assert.ok(script.includes('a\\"x'), '双引号应被转义为 \\"');
+  });
+});
+
+describe('notifyWatcherRevived', () => {
+  it('darwin → 调 osascript，文案含自愈语义', () => {
+    const calls = [];
+    notifyWatcherRevived({ exec: (...a) => calls.push(a), platform: 'darwin' });
+
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0][0], 'osascript');
+    const script = calls[0][1][1];
+    assert.ok(script.includes('display notification'), '应是 osascript 通知脚本');
+    assert.ok(script.includes('自愈'), '文案应说明 watcher 已自愈');
+  });
+
+  it('linux → 调 notify-send', () => {
+    const calls = [];
+    notifyWatcherRevived({ exec: (...a) => calls.push(a), platform: 'linux' });
+
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0][0], 'notify-send');
+  });
+
+  it('未知平台（win32 等）→ 静默跳过', () => {
+    const calls = [];
+    notifyWatcherRevived({ exec: (...a) => calls.push(a), platform: 'win32' });
+    assert.strictEqual(calls.length, 0);
+  });
+
+  it('exec 抛错 → 整体不抛（绝不影响 hook 主流程）', () => {
+    const exec = () => { throw new Error('boom'); };
+    assert.doesNotThrow(() => notifyWatcherRevived({ exec, platform: 'darwin' }));
   });
 });

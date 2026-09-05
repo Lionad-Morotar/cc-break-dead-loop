@@ -8,9 +8,11 @@ import { postToolUse, preToolUseRead } from './handlers.mjs';
 import { buildInjection } from './hookInjector.mjs';
 import { buildSessionStartAdvice } from './sessionStartAdvice.mjs';
 import { ensureWatcherRunning } from './watcherLifecycle.mjs';
+import { notifyWatcherRevived } from './notifier.mjs';
 import {
   ALERTS_FILE,
   HEARTBEAT_FILE,
+  NOTIFY_ENABLED,
   PID_FILE,
   WATCHER_STALE_TIMEOUT_MS,
 } from './config.mjs';
@@ -29,12 +31,18 @@ const WATCHER_SCRIPT = join(here, '..', 'scripts', 'watcher.mjs');
  */
 function ensureWatcherAlive() {
   try {
-    return ensureWatcherRunning({
+    const result = ensureWatcherRunning({
       watcherScript: WATCHER_SCRIPT,
       heartbeatFile: HEARTBEAT_FILE,
       pidFile: PID_FILE,
       staleTimeoutMs: WATCHER_STALE_TIMEOUT_MS,
     });
+    // 仅死亡自愈（restart）通知：中断窗口内的子代理死循环可能漏检，用户有权知情；
+    // 首启（start）属正常初始化不打扰。重启后心跳立即新鲜，后续 hook 天然不再触发
+    if (NOTIFY_ENABLED && result?.action === 'restart' && result.started) {
+      notifyWatcherRevived();
+    }
+    return result;
   } catch {
     return null;
   }
