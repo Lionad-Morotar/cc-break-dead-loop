@@ -6,11 +6,6 @@
 
 ```
 cc-break-dead-loop/
-├── src/                           # CLI 工具源码
-│   └── cli/                       # CLI 命令（install / uninstall / status）
-│       ├── index.mjs              # CLI 入口（命令路由、参数解析）
-│       ├── commands/              # install / uninstall / status
-│       └── utils/                 # config / fs / paths
 ├── plugin/                        # Claude Code 插件
 │   ├── src/                       # 核心源码（13 个 ES Module 文件）
 │   │   ├── index.mjs              # Hook 入口（stdin/stdout 协议、handler 分发、Stop 阻断）
@@ -23,7 +18,9 @@ cc-break-dead-loop/
 │   │   ├── alertStore.mjs         # 告警共享状态（watcher 写、hooks 读，原子写入）
 │   │   ├── deadLoopDetector.mjs   # 死循环检测算法（尾部连续重复判定 + 稳定序列化指纹）
 │   │   ├── hookInjector.mjs       # Hook 注入逻辑（读告警 → additionalContext / blockingError）
-│   │   └── subagentTranscriptReader.mjs # subagent jsonl 解析（提取 tool_use 序列）
+│   │   ├── subagentTranscriptReader.mjs # subagent jsonl 解析（tool_use 序列 + 尾块时间戳读取）
+│   │   ├── notifier.mjs           # 桌面通知（活跃死循环提醒 + watcher 复活通知）
+│   │   └── sessionStartAdvice.mjs # SessionStart 注入文案（引导后台子代理）
 │   ├── .claude-plugin/
 │   │   └── plugin.json            # 插件元数据（name、version、description）
 │   ├── hooks/
@@ -32,17 +29,19 @@ cc-break-dead-loop/
 │       ├── node-runner.mjs        # Node.js runner（stdin 收集、透传 JSON、Stop exit 2、graceful fallback）
 │       ├── setup-check.mjs        # Setup 钩子：环境检测 + 启动/保活 watcher 常驻进程
 │       └── watcher.mjs            # watcher 常驻进程入口（detached spawn）
-├── tests/                         # 测试套件（15 文件，135 用例）
+├── tests/                         # 测试套件（12 文件，136 用例）
 │   ├── state.test.mjs             # 状态管理单元测试
 │   ├── handlers.test.mjs          # Handler 逻辑单元测试
-│   ├── integration.test.mjs       # 端到端集成测试（stdin/stdout 协议）
+│   ├── integration.test.mjs       # 端到端集成测试（stdin/stdout 协议，env 隔离）
 │   ├── watcher.test.mjs           # watcher 扫描/告警同步（fake timers + fs mock）
 │   ├── watcherLifecycle.test.mjs  # 进程决策与 spawn（mock child_process）
+│   ├── watcherKeepalive.test.mjs  # 保活接线集成（真实 spawn + PATH shim 通知断言）
 │   ├── alertStore.test.mjs        # 告警读写与并发
 │   ├── deadLoopDetector.test.mjs  # 检测算法（尾部连续重复、稳定序列化）
 │   ├── hookInjector.test.mjs      # 注入措辞与最严重告警选取
-│   ├── subagentTranscriptReader.test.mjs # jsonl 解析容错
-│   └── cli/                       # CLI 单元测试（fs / index / install / paths / status / uninstall）
+│   ├── notifier.test.mjs          # 桌面通知平台分发（依赖注入）
+│   ├── sessionStartAdvice.test.mjs # SessionStart 注入文案
+│   └── subagentTranscriptReader.test.mjs # jsonl 解析容错 + 尾块时间戳读取
 ├── docs/                          # 深度文档（Project / Architecture / Workflow / DeepDive）
 ├── .planning/codebase/            # 本目录：codebase mapping 文档（7 份）
 ├── vitest.config.mjs              # Vitest 配置（include tests/**/*.test.mjs）
@@ -58,15 +57,11 @@ cc-break-dead-loop/
 
 **`plugin/src/`:**
 - Purpose: 核心业务逻辑源码
-- Contains: 11 个 ES Module 文件，纯 JavaScript，零运行时依赖
+- Contains: 13 个 ES Module 文件，纯 JavaScript，零运行时依赖
 - Key files: `index.mjs`（入口分发）、`handlers.mjs`（主 agent 检测）、`watcher.mjs`（子 agent 检测核心）
 - 架构分两条检测线：
   - **主 agent Read 死循环**：`handlers.mjs` + `state.mjs`（双 Hook：PostToolUse:Read 计数 + PreToolUse:Read 阻断）
   - **子 agent 死循环**：`watcher.mjs` 扫 transcript → `deadLoopDetector.mjs` 判定 → `alertStore.mjs` 写告警 → `hookInjector.mjs` 经 Stop/PostToolUse:`*` Hook 注入
-
-**`src/cli/`:**
-- Purpose: CLI 工具源码（`npx cc-break-dead-loop install|uninstall|status`）
-- Contains: CLI 命令实现、路径常量、文件操作工具、配置加载
 
 **`plugin/scripts/`:**
 - Purpose: Hook 执行入口 + watcher 进程入口
@@ -74,7 +69,7 @@ cc-break-dead-loop/
 
 **`tests/`:**
 - Purpose: 测试套件
-- Contains: 15 个测试文件，使用 Vitest
+- Contains: 12 个测试文件，使用 Vitest
 - Key files: `integration.test.mjs`（stdin/stdout 协议）、`watcher.test.mjs`（fake timers）、`watcherLifecycle.test.mjs`（spawn mock）
 
 **`docs/`:**
@@ -87,10 +82,10 @@ cc-break-dead-loop/
 ## 关键文件位置
 
 **入口点:**
-- `plugin/src/index.mjs`: Hook 逻辑入口，导出 `main(event, stdinData)`，分发 4 个事件（post-tool-use / pre-tool-use-read / post-tool-use-any / stop），支持 CLI 直接运行
+- `plugin/src/index.mjs`: Hook 逻辑入口，导出 `main(event, stdinData)`，分发 5 个事件（post-tool-use / pre-tool-use-read / post-tool-use-any / stop / session-start），支持直接运行
 - `plugin/scripts/node-runner.mjs`: Hook 运行时入口，被 `hooks.json` 调用，处理 Stop 的 `shouldBlock` → `exit(2)`
-- `plugin/scripts/setup-check.mjs`: Setup Hook 入口，环境检测 + `ensureWatcherRunning` 启动 watcher
-- `plugin/scripts/watcher.mjs`: watcher 常驻进程入口，由 setup-check detached spawn
+- `plugin/scripts/setup-check.mjs`: Setup Hook 入口（仅 `--init`/`--maintenance` 特殊触发），环境检测 + `ensureWatcherRunning` 保活
+- `plugin/scripts/watcher.mjs`: watcher 常驻进程入口，由 hook 保活接线 detached spawn
 
 **配置:**
 - `plugin/src/config.mjs`: 阈值（WARN=3 / BLOCK=5）、数据目录、watcher 参数（WINDOW=20 / THRESHOLD=5 / SCAN=5000ms / STALE=30000ms）
@@ -107,8 +102,9 @@ cc-break-dead-loop/
 
 **测试:**
 - `tests/state.test.mjs`、`tests/handlers.test.mjs`、`tests/integration.test.mjs`
-- `tests/watcher.test.mjs`、`tests/watcherLifecycle.test.mjs`、`tests/alertStore.test.mjs`、`tests/deadLoopDetector.test.mjs`、`tests/hookInjector.test.mjs`、`tests/subagentTranscriptReader.test.mjs`
-- `tests/cli/*.test.mjs`（6 个）
+- `tests/watcher.test.mjs`、`tests/watcherLifecycle.test.mjs`、`tests/watcherKeepalive.test.mjs`
+- `tests/alertStore.test.mjs`、`tests/deadLoopDetector.test.mjs`、`tests/hookInjector.test.mjs`
+- `tests/notifier.test.mjs`、`tests/sessionStartAdvice.test.mjs`、`tests/subagentTranscriptReader.test.mjs`
 
 ## 命名约定
 
@@ -119,9 +115,9 @@ cc-break-dead-loop/
 - 文档文件: `YYYY-MM-DD-*.md`（plans / brainstorms 目录）
 
 **目录:**
-- `plugin/src/`（扁平，11 文件，无子目录）
+- `plugin/src/`（扁平，13 文件，无子目录）
 - `plugin/`（`.claude-plugin/`、`hooks/`、`scripts/`、`src/`）
-- `tests/`（扁平 + `cli/` 子目录）
+- `tests/`（扁平）
 - `docs/`（按类型分类）
 
 **函数:**

@@ -2,12 +2,12 @@
 
 ## 概述
 
-测试套件使用 **Vitest ^4.1.8**（devDependency），断言仍用 `node:assert`。共 **135 项测试 / 15 文件**，覆盖线 1（主 agent Read 死循环）、线 2（子 agent 工具死循环 watcher 子系统）、CLI 工具、端到端集成四个层次。
+测试套件使用 **Vitest ^4.1.8**（devDependency），断言仍用 `node:assert`。共 **136 项测试 / 12 文件**，覆盖线 1（主 agent Read 死循环）、线 2（子 agent 工具死循环 watcher 子系统与保活接线）、端到端集成三个层次。
 
 从 `node:test` 迁移到 vitest 的动机：线 2 watcher 测试需要 fake timers（`vi.useFakeTimers`）+ 模块 mock（`vi.mock('node:fs')` / `vi.mock('node:child_process')`），`node:test` 无内置支持。
 
 ```bash
-npm test                         # = vitest run（135 用例）
+npm test                         # = vitest run（136 用例）
 npm run test:watch               # vitest watch 模式
 npx vitest run tests/watcher.test.mjs   # 单文件
 npx vitest -t "sanitizeName"            # 按名过滤
@@ -17,15 +17,6 @@ npx vitest -t "sanitizeName"            # 按名过滤
 
 ```mermaid
 graph TD
-  subgraph "CLI 测试（6 文件）"
-    C1[cli/index.test.mjs]
-    C2[cli/install.test.mjs]
-    C3[cli/uninstall.test.mjs]
-    C4[cli/status.test.mjs]
-    C5[cli/paths.test.mjs]
-    C6[cli/fs.test.mjs]
-  end
-
   subgraph "集成测试"
     I1[integration.test.mjs<br/>stdin/stdout + Stop exit 2]
   end

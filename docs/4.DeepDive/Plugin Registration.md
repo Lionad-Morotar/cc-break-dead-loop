@@ -189,43 +189,21 @@ detached spawn（`stdio: 'ignore'`, `unref`），不依赖父进程。立即扫�
 
 ## 安装机制
 
-### 方式一：Marketplace 安装（推荐）
+### Marketplace 安装
 
 ```bash
 # 在 Claude Code CLI 中
-/plugin marketplace add Lionad-Morotar/cc-break-dead-loop
-/plugin install cc-break-dead-loop
+/plugin marketplace add Lionad-Morotar/claude-plugins
+/plugin install cc-break-dead-loop@lionad-morotar
 ```
 
-Marketplace 配置由项目根目录 `.claude-plugin/marketplace.json` 定义。
-
-### 方式二：NPX CLI 安装
-
-```bash
-npx cc-break-dead-loop install
-```
-
-安装流程（`src/cli/commands/install.mjs`）：
-1. 检测 Claude Code 配置目录
-2. 复制 `plugin/` 到 `~/.claude/plugins/marketplaces/<owner>/plugin/`
-3. 注册到 `known_marketplaces.json`
-4. 注册到 `installed_plugins.json`
-5. 启用插件（`settings.json` 的 `enabledPlugins`）
+Marketplace 配置由中心集市仓库 `Lionad-Morotar/claude-plugins` 的 `.claude-plugin/marketplace.json` 定义，本插件条目以 `source: github` 指向本仓库并用 `ref` 锁定发布 tag。
 
 ### 验证安装
 
-重启 Claude Code，启动日志应出现：
-
-```
-[cc-break-dead-loop] Setup: OK (Node.js v22.22.1)
-[cc-break-dead-loop] Watcher start (pid=12345)
-```
-
-### 其他 CLI 命令
+重启 Claude Code（新开会话即触发 SessionStart hook，watcher 自动拉起），随后确认常驻进程存活：
 
 ```bash
-npx cc-break-dead-loop status            # 查看安装状态
-npx cc-break-dead-loop uninstall         # 卸载
-npx cc-break-dead-loop uninstall --purge # 卸载并删除 marketplace 目录
-npx cc-break-dead-loop version           # 版本号
+cat ~/.data/cc-break-dead-loop/watcher-heartbeat.json   # ts 应在最近 30 秒内
+ps -p $(cat ~/.data/cc-break-dead-loop/watcher.pid)      # 应显示 watcher.mjs 进程
 ```

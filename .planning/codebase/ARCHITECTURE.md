@@ -31,7 +31,7 @@
 **入口/分发层（Entry）:**
 - Purpose: stdin/stdout 协议处理、4 事件分发、统一错误边界
 - Location: `plugin/src/index.mjs`
-- Contains: `main(event, stdinData)`、`postToolUseAnyAlert`、`stopAlert`、`sessionStartAdvice`、CLI 入口
+- Contains: `main(event, stdinData)`、`postToolUseAnyAlert`、`stopAlert`、`sessionStartAdvice`、`ensureWatcherAlive`、直接执行入口
 - Depends on: `handlers.mjs`、`hookInjector.mjs`、`config.mjs`
 
 **主 Agent Handler 层:**
@@ -99,28 +99,25 @@
 - Location: `plugin/src/config.mjs`
 - Exports: `WARN_THRESHOLD`(3)、`BLOCK_THRESHOLD`(5)、`DATA_DIR`、`CLAUDE_CONFIG_DIR`、`PROJECTS_DIR`、`ALERTS_FILE`、`HEARTBEAT_FILE`、`PID_FILE`、`WATCHER_WINDOW_SIZE`(20)、`WATCHER_THRESHOLD`(5)、`WATCHER_SCAN_INTERVAL_MS`(5000)、`WATCHER_STALE_TIMEOUT_MS`(30000)
 
-**CLI 工具层:**
-- Purpose: `npx cc-break-dead-loop` 命令（install / uninstall / status）
-- Location: `src/cli/`
-
 ## 数据流
 
-**Setup 流（插件加载时）:**
+**保活流（任意 Hook 事件）:**
 
-1. Claude Code 加载插件，执行 `Setup` Hook
-2. `plugin/scripts/setup-check.mjs` 检测 Node.js >= 18
-3. 调用 `ensureWatcherRunning`：读 `watcher-heartbeat.json` → `decideAction`
-   - 心跳新鲜（`now - ts <= 30s`）→ `none`（不重启）
-   - 心跳过期/缺失 → `start`/`restart`（`restart` 时按 `watcher.pid` kill 旧进程）
-4. detached spawn `plugin/scripts/watcher.mjs`（`stdio: 'ignore'`，`unref`），写新 PID
-5. 输出 Setup 结果，`exit(0)` 永不阻断启动
+1. SessionStart（matcher `*`）/ Stop / PostToolUse:`*` hook 触发，`plugin/src/index.mjs` 的 `ensureWatcherAlive` 调用 `ensureWatcherRunning`；`Setup` Hook（`setup-check.mjs`，含 Node.js >= 18 检测）仅 `--init`/`--maintenance` 特殊触发时接线
+2. 读 `watcher-heartbeat.json` → `decideAction`：
+   - 心跳新鲜（`now - ts <= 30s`）→ `none`（不重启，保活检查开销仅一次文件读取）
+   - 心跳过期/缺失 → `start`/`restart`（`restart` 时按 `watcher.pid` kill 旧进程并发复活桌面通知）
+3. detached spawn `plugin/scripts/watcher.mjs`（`stdio: 'ignore'`，`unref`），写新 PID
+4. 保活失败静默吞掉，绝不阻断 hook 主流程
 
 **Watcher 扫描流（常驻进程，每 5s）:**
 
 1. `watcher.mjs` 启动时立即 `scanOnce`，随后 `setInterval(scanOnce, 5000)`
 2. `findAllAgentJsonls(PROJECTS_DIR)` 递归收集所有 `agent-*.jsonl`
 3. 对每个 jsonl：
+   - `statSync` mtime 门控：文件系统写入时间超过 `WATCHER_STALE_MS` 直接跳过（零内容读取）
    - `parseAgentFromPath` 解析 agentId / sessionId
+   - `readLastActivityTimestamp`（大文件尾块读、尾块无命中回退全量）判定内容级停滞
    - `readRecentToolCalls(jsonl, 20)` 取最近 20 个 tool_use
    - `detectDeadLoop(calls, 5)` 判定尾部连续重复是否 ≥ 5
 4. 全量重算 `currentDeadLoops`，与 `previousDeadLoopIds` 对比：
@@ -181,9 +178,9 @@
 
 **Plugin Hook Entry:**
 - Location: `plugin/hooks/hooks.json`
-- Triggers: Setup、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
+- Triggers: Setup（仅 --init/--maintenance 特殊触发）、SessionStart[`*`]、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
 
-**CLI Entry（直接执行）:**
+**直接执行入口:**
 - Location: `plugin/src/index.mjs`（`import.meta.url === file://...` 分支）
 - 从 stdin 读取，调用 `main()`，Stop 阻断时 `exit(2)`
 

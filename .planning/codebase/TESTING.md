@@ -28,7 +28,7 @@ npx vitest -t "sanitizeName"             # 按测试名过滤
 - 测试文件与源码分离，统一放在 `tests/` 目录
 - 命名：`{模块名}.test.mjs`，与源码模块一一对应
 
-**结构（15 文件 / 135 用例）:**
+**结构（12 文件 / 136 用例）:**
 ```
 tests/
 ├── state.test.mjs                    # 状态管理（主 agent 计数器）
@@ -39,14 +39,10 @@ tests/
 ├── alertStore.test.mjs               # 告警读写、并发、session 隔离
 ├── deadLoopDetector.test.mjs         # 检测算法（尾部连续重复、稳定序列化指纹）
 ├── hookInjector.test.mjs             # 注入措辞、最严重告警选取
-├── subagentTranscriptReader.test.mjs # jsonl 解析容错
-└── cli/                              # CLI 单元测试
-    ├── index.test.mjs                # 参数解析、帮助、版本
-    ├── install.test.mjs              # 安装流程、覆盖安装、格式校验
-    ├── uninstall.test.mjs            # 卸载、--purge
-    ├── status.test.mjs               # 状态查询
-    ├── paths.test.mjs                # 路径常量
-    └── fs.test.mjs                   # 文件操作工具
+├── subagentTranscriptReader.test.mjs # jsonl 解析容错 + 尾块时间戳读取
+├── notifier.test.mjs                 # 桌面通知平台分发（依赖注入）
+├── sessionStartAdvice.test.mjs       # SessionStart 注入文案
+└── watcherKeepalive.test.mjs         # 保活接线集成（真实 spawn + PATH shim 通知断言）
 ```
 
 ## 测试结构
@@ -81,7 +77,7 @@ describe('isWastedCall', () => {
 | 文件系统（state、alertStore）| 真实 tmp 目录 | `mkdtempSync(tmpdir())` 隔离，不 mock fs |
 | watcher（含 setInterval）| `vi.useFakeTimers` + 真实 tmp fs | 手动推进时间触发 `scanOnce`，jsonl 写真实 tmp 目录 |
 | watcherLifecycle（spawn）| `vi.mock('node:child_process')` | mock `spawn` 返回假 child，验证 detached/unref/PID 写入 |
-| CLI 命令 | 真实 tmp `CLAUDE_CONFIG_DIR` | `process.env.CLAUDE_CONFIG_DIR = tmpDir` 隔离 |
+| 保活接线（keepalive）| 真实 spawn + temp env | `CC_BREAK_DATA_DIR`/`CC_BREAK_PROJECTS_DIR` 钉 temp dir，PATH shim 假 osascript/notify-send 断言通知 |
 
 **watcher fake timers 模式:**
 ```javascript
@@ -160,7 +156,7 @@ function writeAgentJsonl(root, project, session, agentId, lines) { ... }
 | 死循环检测算法 | 已覆盖 | `tests/deadLoopDetector.test.mjs` |
 | Hook 注入逻辑 | 已覆盖 | `tests/hookInjector.test.mjs` |
 | transcript 解析 | 已覆盖 | `tests/subagentTranscriptReader.test.mjs` |
-| CLI（install/uninstall/status/paths/fs/index）| 已覆盖 | `tests/cli/*.test.mjs` |
+| watcher 保活接线 | 已覆盖 | `tests/watcherKeepalive.test.mjs` |
 
 ## 测试类型
 

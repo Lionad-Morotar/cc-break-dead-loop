@@ -121,7 +121,7 @@ watcher 若中途死亡（睡眠 / OOM / 手动 kill），会在下一次 Sessio
 ## 开发测试
 
 ```bash
-# 运行全部测试（165 tests，18 files）
+# 运行全部测试（136 tests，12 files）
 npm test                         # = vitest run
 
 # watch 模式（TDD）
@@ -188,8 +188,6 @@ watcher 扫描的 subagent transcript 位于 `~/.claude/projects/<project>/<sess
 
 ```
 cc-break-dead-loop/
-├── src/
-│   └── cli/               # NPX CLI 工具（install / uninstall / status）
 ├── plugin/
 │   ├── .claude-plugin/
 │   │   └── plugin.json    # 插件元数据

@@ -80,11 +80,12 @@
 
 **Incoming：**
 - Claude Code Hook 调用（子进程 stdin/stdout 协议，非 HTTP webhook）
-  - `Setup` Hook — 检测 Node.js 版本 + 启动/保活 watcher 常驻进程
+  - `Setup` Hook — 仅 `--init`/`--init-only`/`--maintenance` 特殊触发：检测 Node.js 版本 + watcher 保活
+  - `SessionStart` Hook — 注入「子代理必须后台运行」规则 + watcher 保活（matcher `*`，覆盖 startup/resume/clear/compact）
   - `PostToolUse:Read` Hook — 主 agent Read 后检测 wasted call，计数（线 1）
-  - `PostToolUse:*` Hook — 任意工具后注入子 agent 死循环告警（读 `alerts.json`，线 2）
+  - `PostToolUse:*` Hook — 任意工具后注入子 agent 死循环告警（读 `alerts.json`，线 2）+ watcher 保活兜底
   - `PreToolUse:Read` Hook — Read 前检查计数器，决定警告（count≥3）/阻断（count≥5）
-  - `Stop` Hook — 主 agent 结束 turn 时，若有未处理子 agent 死循环告警，返回 blockingError（`exit 2`）强制继续 turn
+  - `Stop` Hook — 主 agent 结束 turn 时，若有未处理子 agent 死循环告警，返回 blockingError（`exit 2`）强制继续 turn；+ watcher 保活兜底
 
 **Outgoing：**
 - 无 — 插件不向外部服务发起任何 HTTP 请求或回调
