@@ -103,13 +103,16 @@ describe('watcher keepalive: hook 接线', () => {
     heartbeatFile = join(dataDir, 'watcher-heartbeat.json');
     pidFile = join(dataDir, 'watcher.pid');
     markerFile = join(tmpDir, 'notify-marker.log');
-    // PATH shim：假 osascript 把参数追加到 marker 文件，
-    // 用于在不弹真实桌面通知的情况下断言 notify 接线是否触发
-    writeFileSync(
-      join(binDir, 'osascript'),
-      `#!/bin/sh\nprintf '%s\\n' "$@" >> '${markerFile}'\n`,
-    );
-    chmodSync(join(binDir, 'osascript'), 0o755);
+    // PATH shim：假 osascript/notify-send 把参数追加到 marker 文件，
+    // 用于在不弹真实桌面通知的情况下断言 notify 接线是否触发；
+    // 两个平台二进制都要伪造，否则 linux 上「通知开启」用例必红
+    for (const bin of ['osascript', 'notify-send']) {
+      writeFileSync(
+        join(binDir, bin),
+        `#!/bin/sh\nprintf '%s\\n' "$@" >> '${markerFile}'\n`,
+      );
+      chmodSync(join(binDir, bin), 0o755);
+    }
   });
 
   afterEach(() => {
@@ -221,10 +224,12 @@ describe('watcher keepalive: hook 接线', () => {
     });
     assert.ok(revived, 'watcher 应自愈');
     assert.ok(existsSync(markerFile), '自愈路径应触发桌面通知');
+    const marker = readFileSync(markerFile, 'utf8');
     assert.ok(
-      readFileSync(markerFile, 'utf8').includes('display notification'),
-      'marker 应记录 osascript 通知脚本',
+      marker.split('\n').filter((l) => l.includes('display notification')).length === 1,
+      '复活通知应恰好一次（shim 每次调用写一行脚本）',
     );
+    assert.ok(marker.includes('监控已自愈'), '应使用自愈文案而非死循环文案');
   }, 25_000);
 
   it('stop: 心跳过期自愈 + CC_BREAK_NOTIFY=0 → 自愈但不通知', async () => {

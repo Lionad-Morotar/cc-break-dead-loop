@@ -21,22 +21,15 @@ function escape(s) {
 }
 
 /**
- * 检测到活跃死循环时发桌面通知
- *
- * 仅 darwin/linux 实发，其他平台静默跳过；任何错误静默吞掉。
+ * 平台分发共享骨架：darwin osascript / linux notify-send / 其他平台静默。
  * 通过 deps 注入 exec/platform 便于测试（项目无 vi.mock 先例，沿用依赖注入风格）。
- *
- * @param {{ agentType?: string, toolName: string, repeatCount: number }} info
- * @param {{ exec?: Function, platform?: string }} [deps]
+ * @param {string} title
+ * @param {string} message
+ * @param {{ exec?: Function, platform?: string }} deps
  */
-export function notifyDeadLoop(info, deps = {}) {
+function sendDesktopNotification(title, message, deps) {
   const exec = deps.exec ?? defaultExec;
   const platform = deps.platform ?? process.platform;
-  const agentType = info?.agentType || '子代理';
-  const title = '[cc-break-dead-loop] 子代理疑似死循环';
-  const message =
-    `${agentType} 连续 ${info?.repeatCount ?? '?'} 次相同的 ${info?.toolName ?? '?'} 调用。` +
-    `前台子代理无法自动拦截，如需中断请手动 Esc。`;
 
   try {
     if (platform === 'darwin') {
@@ -50,8 +43,24 @@ export function notifyDeadLoop(info, deps = {}) {
     }
     // 其他平台（win32 等）：静默跳过
   } catch {
-    // 通知失败绝不影响 watcher
+    // 通知失败绝不影响主流程
   }
+}
+
+/**
+ * 检测到活跃死循环时发桌面通知，任何错误静默吞掉
+ *
+ * @param {{ agentType?: string, toolName: string, repeatCount: number }} info
+ * @param {{ exec?: Function, platform?: string }} [deps]
+ */
+export function notifyDeadLoop(info, deps = {}) {
+  const agentType = info?.agentType || '子代理';
+  sendDesktopNotification(
+    '[cc-break-dead-loop] 子代理疑似死循环',
+    `${agentType} 连续 ${info?.repeatCount ?? '?'} 次相同的 ${info?.toolName ?? '?'} 调用。` +
+      `前台子代理无法自动拦截，如需中断请手动 Esc。`,
+    deps,
+  );
 }
 
 /**
@@ -60,30 +69,14 @@ export function notifyDeadLoop(info, deps = {}) {
  * 仅 restart 路径（心跳超时复活）调用；start（首启，无心跳文件）不通知——
  * 防线初始化对用户无感，防线中断才需要感知：中断窗口内的子代理死循环
  * 可能漏检，用户有权知道这段时间防线不在岗。
- * 通过 deps 注入 exec/platform 便于测试（沿 notifyDeadLoop 依赖注入风格）。
  *
  * @param {{ exec?: Function, platform?: string }} [deps]
  */
 export function notifyWatcherRevived(deps = {}) {
-  const exec = deps.exec ?? defaultExec;
-  const platform = deps.platform ?? process.platform;
-  const title = '[cc-break-dead-loop] 监控已自愈';
-  const message =
+  sendDesktopNotification(
+    '[cc-break-dead-loop] 监控已自愈',
     '死循环监控进程（watcher）心跳超时，已自动重启。' +
-    '中断期间子代理死循环可能漏检。';
-
-  try {
-    if (platform === 'darwin') {
-      exec(
-        'osascript',
-        ['-e', `display notification "${escape(message)}" with title "${escape(title)}"`],
-        { timeout: 3000 },
-      );
-    } else if (platform === 'linux') {
-      exec('notify-send', [title, message], { timeout: 3000 });
-    }
-    // 其他平台（win32 等）：静默跳过
-  } catch {
-    // 通知失败绝不影响 hook 主流程
-  }
+      '中断期间子代理死循环可能漏检。',
+    deps,
+  );
 }
