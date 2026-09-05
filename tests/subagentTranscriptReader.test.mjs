@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readRecentToolCalls, readLastActivityTimestamp } from '../plugin/src/subagentTranscriptReader.mjs';
+import { readRecentToolCalls, readLastActivityTimestamp, TAIL_BYTES } from '../plugin/src/subagentTranscriptReader.mjs';
 
 /**
  * 构造 assistant 行（含若干 tool_use block）
@@ -202,8 +202,10 @@ describe('readLastActivityTimestamp', () => {
   });
 
   it('大于尾块的文件：时间戳在尾部 → 命中', () => {
-    // ~340KB 无时间戳垫材 + 末尾时间戳行，超过 256KB 尾块阈值
-    const padding = Array.from({ length: 2000 }, () =>
+    // 垫材总量由 TAIL_BYTES 派生（1.4 倍余量），阈值调整时测试数据随之伸缩，
+    // 避免常量上调后尾块分支覆盖静默归零
+    const lineSize = JSON.stringify({ type: 'attachment', payload: 'x'.repeat(150) }).length + 1;
+    const padding = Array.from({ length: Math.ceil((TAIL_BYTES * 1.4) / lineSize) }, () =>
       JSON.stringify({ type: 'attachment', payload: 'x'.repeat(150) }),
     );
     const tsLine = JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:05.000Z' });
@@ -215,7 +217,8 @@ describe('readLastActivityTimestamp', () => {
 
   it('尾块内无时间戳但更早处有 → 全量回退命中（旧语义不变）', () => {
     const tsLine = JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' });
-    const padding = Array.from({ length: 2500 }, () =>
+    const lineSize = JSON.stringify({ type: 'attachment', payload: 'x'.repeat(150) }).length + 1;
+    const padding = Array.from({ length: Math.ceil((TAIL_BYTES * 1.6) / lineSize) }, () =>
       JSON.stringify({ type: 'attachment', payload: 'x'.repeat(150) }),
     );
     writeFileSync(jsonlFile, [tsLine, ...padding].join('\n') + '\n');
@@ -226,7 +229,10 @@ describe('readLastActivityTimestamp', () => {
 
   it('超长末行（单行超过尾块）→ 截断行跳过，前一行时间戳命中', () => {
     const tsLine = JSON.stringify({ type: 'assistant', timestamp: '2026-06-14T10:00:00.000Z' });
-    const hugeLine = JSON.stringify({ type: 'user', message: { content: 'y'.repeat(300 * 1024) } });
+    const hugeLine = JSON.stringify({
+      type: 'user',
+      message: { content: 'y'.repeat(TAIL_BYTES + 40 * 1024) },
+    });
     writeFileSync(jsonlFile, [tsLine, hugeLine].join('\n') + '\n');
 
     const ts = readLastActivityTimestamp(jsonlFile);
