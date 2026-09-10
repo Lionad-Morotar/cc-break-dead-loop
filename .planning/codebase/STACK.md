@@ -47,16 +47,16 @@
 
 | 模块 | 用途 | 使用文件 |
 |------|------|----------|
-| `node:fs` | 状态/告警/心跳文件读写、目录创建、transcript 读取 | `plugin/src/state.mjs`、`alertStore.mjs`、`watcher.mjs`、`watcherLifecycle.mjs`、`subagentTranscriptReader.mjs` |
+| `node:fs` | 状态/告警/心跳文件读写、目录创建、transcript 读取 | `src/state.mjs`、`alertStore.mjs`、`watcher.mjs`、`watcherLifecycle.mjs`、`subagentTranscriptReader.mjs` |
 | `node:path` | 路径拼接、目录名/基名提取 | 多个模块（state、utils、watcher、watcherLifecycle、alertStore、setup-check）|
-| `node:child_process` | Git 仓库名解析（`spawnSync`）、watcher 进程 spawn（`spawn` detached）、子进程集成测试 | `plugin/src/utils.mjs`、`watcherLifecycle.mjs`、`tests/integration.test.mjs` |
+| `node:child_process` | Git 仓库名解析（`spawnSync`）、watcher 进程 spawn（`spawn` detached）、子进程集成测试 | `src/utils.mjs`、`watcherLifecycle.mjs`、`tests/integration.test.mjs` |
 | `node:os` | 临时目录获取（测试用） | `tests/*.test.mjs` |
-| `node:url` | `fileURLToPath` 转换（解析 `__dirname`） | `plugin/scripts/setup-check.mjs`、`tests/integration.test.mjs` |
+| `node:url` | `fileURLToPath` 转换（解析 `__dirname`） | `scripts/setup-check.mjs`、`tests/integration.test.mjs` |
 
 ## 配置
 
 **环境变量：**
-- `HOME` / `USERPROFILE` — 状态数据根目录定位（`plugin/src/config.mjs`）
+- `HOME` / `USERPROFILE` — 状态数据根目录定位（`src/config.mjs`）
 - `CLAUDE_CONFIG_DIR` — Claude Code 配置目录（默认 `~/.claude`），watcher 据此定位 `projects/` 子目录
 - `CC_BREAK_DATA_DIR` — 覆盖状态/告警数据根目录（默认 `~/.data/cc-break-dead-loop`）
 - `CC_BREAK_PROJECTS_DIR` — 覆盖 subagent transcript 根目录（默认 `$CLAUDE_CONFIG_DIR/projects`）
@@ -67,8 +67,8 @@
 - 测试配置：`vitest.config.mjs`（`include: ['tests/**/*.test.mjs']`）
 
 **插件元数据：**
-- `plugin/.claude-plugin/plugin.json` — 插件元数据（名称、版本、描述）
-- `plugin/hooks/hooks.json` — Hook 注册（Setup、PostToolUse[Read+`*`]、PreToolUse[Read]、Stop），record 格式按事件名分组
+- `.claude-plugin/plugin.json` — 插件元数据（名称、版本、描述）
+- `hooks/hooks.json` — Hook 注册（Setup、PostToolUse[Read+`*`]、PreToolUse[Read]、Stop），record 格式按事件名分组
 
 ## 平台要求
 

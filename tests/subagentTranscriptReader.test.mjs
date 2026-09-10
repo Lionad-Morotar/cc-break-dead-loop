@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readRecentToolCalls, readLastActivityTimestamp, TAIL_BYTES } from '../plugin/src/subagentTranscriptReader.mjs';
+import { readRecentToolCalls, readLastActivityTimestamp, TAIL_BYTES } from '../src/subagentTranscriptReader.mjs';
 
 /**
  * 构造 assistant 行（含若干 tool_use block）

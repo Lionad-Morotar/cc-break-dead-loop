@@ -30,7 +30,7 @@ function runRunner(event, input, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       'node',
-      [join(projectRoot, 'plugin/scripts/node-runner.mjs'), event],
+      [join(projectRoot, 'scripts/node-runner.mjs'), event],
       {
         cwd: projectRoot,
         env: { ...process.env, ...env },
@@ -207,7 +207,7 @@ describe('watcher keepalive: hook 接线', () => {
   }, 25_000);
 
   it('hooks.json: SessionStart matcher 为 *（覆盖 resume/clear/compact）', () => {
-    const hooks = readJson(join(projectRoot, 'plugin/hooks/hooks.json'));
+    const hooks = readJson(join(projectRoot, 'hooks/hooks.json'));
     assert.strictEqual(hooks.hooks.SessionStart[0].matcher, '*');
   });
 

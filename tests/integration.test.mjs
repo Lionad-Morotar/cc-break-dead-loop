@@ -47,7 +47,7 @@ afterAll(() => {
 function runRunner(event, input) {
   return new Promise((resolve, reject) => {
     const child = spawn('node', [
-      join(projectRoot, 'plugin/scripts/node-runner.mjs'),
+      join(projectRoot, 'scripts/node-runner.mjs'),
       event,
     ], {
       cwd: projectRoot,
@@ -203,7 +203,7 @@ describe('integration: stdin/stdout protocol', () => {
 
   it('stdin 为无效 JSON 字符串 → 返回 { continue: true }（D5）', async () => {
     const result = await runWithStdin(
-      [join(projectRoot, 'plugin/scripts/node-runner.mjs'), 'post-tool-use'],
+      [join(projectRoot, 'scripts/node-runner.mjs'), 'post-tool-use'],
       'not-json-at-all{'
     );
 
@@ -217,7 +217,7 @@ describe('integration: stdin/stdout protocol', () => {
 describe('integration: setup-check.mjs', () => {
   it('Node.js >= 18 → stdout 包含 "OK"', async () => {
     const result = await runWithStdin(
-      [join(projectRoot, 'plugin/scripts/setup-check.mjs')],
+      [join(projectRoot, 'scripts/setup-check.mjs')],
       ''
     );
 
@@ -230,7 +230,7 @@ describe('integration: setup-check.mjs', () => {
 describe('integration: index.mjs CLI', () => {
   it('直接运行 index.mjs post-tool-use → 正确处理 stdin', async () => {
     const result = await runWithStdin(
-      [join(projectRoot, 'plugin/src/index.mjs'), 'post-tool-use'],
+      [join(projectRoot, 'src/index.mjs'), 'post-tool-use'],
       JSON.stringify({
         tool_name: 'Read',
         cwd: '/tmp',

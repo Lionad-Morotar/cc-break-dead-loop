@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert';
-import { detectDeadLoop } from '../plugin/src/deadLoopDetector.mjs';
+import { detectDeadLoop } from '../src/deadLoopDetector.mjs';
 
 describe('DeadLoopDetector', () => {
   it('空数组或长度不足 → null', () => {

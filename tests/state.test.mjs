@@ -10,8 +10,8 @@ import {
   writeState,
   isSameReadParams,
   incrementCounter,
-} from '../plugin/src/state.mjs';
-import { sanitizeName, getProjectName } from '../plugin/src/utils.mjs';
+} from '../src/state.mjs';
+import { sanitizeName, getProjectName } from '../src/utils.mjs';
 
 describe('sanitizeName', () => {
   it('保留字母数字和连字符', () => {

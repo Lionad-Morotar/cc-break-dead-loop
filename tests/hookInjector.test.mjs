@@ -3,8 +3,8 @@ import assert from 'node:assert';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { addAlert } from '../plugin/src/alertStore.mjs';
-import { buildInjection } from '../plugin/src/hookInjector.mjs';
+import { addAlert } from '../src/alertStore.mjs';
+import { buildInjection } from '../src/hookInjector.mjs';
 
 describe('HookInjector', () => {
   let alertsFile;

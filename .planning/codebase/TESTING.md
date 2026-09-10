@@ -170,7 +170,7 @@ function writeAgentJsonl(root, project, session, agentId, lines) { ... }
 ```javascript
 function runRunner(event, input) {
   return new Promise((resolve) => {
-    const child = spawn('node', [join(projectRoot, 'plugin/scripts/node-runner.mjs'), event], { cwd: projectRoot });
+    const child = spawn('node', [join(projectRoot, 'scripts/node-runner.mjs'), event], { cwd: projectRoot });
     // ...收集 stdout，返回 { code, stdout }
   });
 }

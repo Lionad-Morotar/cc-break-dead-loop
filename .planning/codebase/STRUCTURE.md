@@ -6,29 +6,28 @@
 
 ```
 cc-break-dead-loop/
-├── plugin/                        # Claude Code 插件
-│   ├── src/                       # 核心源码（13 个 ES Module 文件）
-│   │   ├── index.mjs              # Hook 入口（stdin/stdout 协议、handler 分发、Stop 阻断）
-│   │   ├── config.mjs             # 阈值、数据目录、watcher 参数常量
-│   │   ├── handlers.mjs           # PostToolUse:Read + PreToolUse:Read 双 Handler（主 agent Read 死循环）
-│   │   ├── state.mjs              # 状态管理（原子写入、计数器逻辑）
-│   │   ├── utils.mjs              # 路径安全化 + Git 仓库名解析
-│   │   ├── watcher.mjs            # watcher 核心：扫 transcript → 检测死循环 → 同步告警
-│   │   ├── watcherLifecycle.mjs   # watcher 进程生命周期（decideAction / ensureWatcherRunning）
-│   │   ├── alertStore.mjs         # 告警共享状态（watcher 写、hooks 读，原子写入）
-│   │   ├── deadLoopDetector.mjs   # 死循环检测算法（尾部连续重复判定 + 稳定序列化指纹）
-│   │   ├── hookInjector.mjs       # Hook 注入逻辑（读告警 → additionalContext / blockingError）
-│   │   ├── subagentTranscriptReader.mjs # subagent jsonl 解析（tool_use 序列 + 尾块时间戳读取）
-│   │   ├── notifier.mjs           # 桌面通知（活跃死循环提醒 + watcher 复活通知）
-│   │   └── sessionStartAdvice.mjs # SessionStart 注入文案（引导后台子代理）
-│   ├── .claude-plugin/
-│   │   └── plugin.json            # 插件元数据（name、version、description）
-│   ├── hooks/
-│   │   └── hooks.json             # Hook 注册（Setup、SessionStart、PostToolUse[Read+*]、PreToolUse[Read]、Stop）
-│   └── scripts/
-│       ├── node-runner.mjs        # Node.js runner（stdin 收集、透传 JSON、Stop exit 2、graceful fallback）
-│       ├── setup-check.mjs        # Setup 钩子：环境检测 + 启动/保活 watcher 常驻进程
-│       └── watcher.mjs            # watcher 常驻进程入口（detached spawn）
+├── src/                           # 核心源码（13 个 ES Module 文件）
+│   ├── index.mjs                  # Hook 入口（stdin/stdout 协议、handler 分发、Stop 阻断）
+│   ├── config.mjs                 # 阈值、数据目录、watcher 参数常量
+│   ├── handlers.mjs               # PostToolUse:Read + PreToolUse:Read 双 Handler（主 agent Read 死循环）
+│   ├── state.mjs                  # 状态管理（原子写入、计数器逻辑）
+│   ├── utils.mjs                  # 路径安全化 + Git 仓库名解析
+│   ├── watcher.mjs                # watcher 核心：扫 transcript → 检测死循环 → 同步告警
+│   ├── watcherLifecycle.mjs       # watcher 进程生命周期（decideAction / ensureWatcherRunning）
+│   ├── alertStore.mjs             # 告警共享状态（watcher 写、hooks 读，原子写入）
+│   ├── deadLoopDetector.mjs       # 死循环检测算法（尾部连续重复判定 + 稳定序列化指纹）
+│   ├── hookInjector.mjs           # Hook 注入逻辑（读告警 → additionalContext / blockingError）
+│   ├── subagentTranscriptReader.mjs # subagent jsonl 解析（tool_use 序列 + 尾块时间戳读取）
+│   ├── notifier.mjs               # 桌面通知（活跃死循环提醒 + watcher 复活通知）
+│   └── sessionStartAdvice.mjs     # SessionStart 注入文案（引导后台子代理）
+├── .claude-plugin/                # 插件元数据（必须在仓库根，CC 只从根读取）
+│   └── plugin.json
+├── hooks/
+│   └── hooks.json                 # Hook 注册（Setup、SessionStart、PostToolUse[Read+*]、PreToolUse[Read]、Stop）
+├── scripts/
+│   ├── node-runner.mjs            # Node.js runner（stdin 收集、透传 JSON、Stop exit 2、graceful fallback）
+│   ├── setup-check.mjs            # Setup 钩子：环境检测 + 启动/保活 watcher 常驻进程
+│   └── watcher.mjs                # watcher 常驻进程入口（detached spawn）
 ├── tests/                         # 测试套件（12 文件，136 用例）
 │   ├── state.test.mjs             # 状态管理单元测试
 │   ├── handlers.test.mjs          # Handler 逻辑单元测试
@@ -57,7 +56,7 @@ cc-break-dead-loop/
 
 ## 目录用途
 
-**`plugin/src/`:**
+**`src/`:**
 - Purpose: 核心业务逻辑源码
 - Contains: 13 个 ES Module 文件，纯 JavaScript，零运行时依赖
 - Key files: `index.mjs`（入口分发）、`handlers.mjs`（主 agent 检测）、`watcher.mjs`（子 agent 检测核心）
@@ -65,7 +64,7 @@ cc-break-dead-loop/
   - **主 agent Read 死循环**：`handlers.mjs` + `state.mjs`（双 Hook：PostToolUse:Read 计数 + PreToolUse:Read 阻断）
   - **子 agent 死循环**：`watcher.mjs` 扫 transcript → `deadLoopDetector.mjs` 判定 → `alertStore.mjs` 写告警 → `hookInjector.mjs` 经 Stop/PostToolUse:`*` Hook 注入
 
-**`plugin/scripts/`:**
+**`scripts/`:**
 - Purpose: Hook 执行入口 + watcher 进程入口
 - Key files: `node-runner.mjs`（Hook 运行时）、`setup-check.mjs`（环境检测 + watcher 保活）、`watcher.mjs`（detached 常驻进程）
 
@@ -88,23 +87,23 @@ cc-break-dead-loop/
 ## 关键文件位置
 
 **入口点:**
-- `plugin/src/index.mjs`: Hook 逻辑入口，导出 `main(event, stdinData)`，分发 5 个事件（post-tool-use / pre-tool-use-read / post-tool-use-any / stop / session-start），支持直接运行
-- `plugin/scripts/node-runner.mjs`: Hook 运行时入口，被 `hooks.json` 调用，处理 Stop 的 `shouldBlock` → `exit(2)`
-- `plugin/scripts/setup-check.mjs`: Setup Hook 入口（仅 `--init`/`--init-only`/`--maintenance` 特殊触发），环境检测 + `ensureWatcherRunning` 保活
-- `plugin/scripts/watcher.mjs`: watcher 常驻进程入口，由 hook 保活接线 detached spawn
+- `src/index.mjs`: Hook 逻辑入口，导出 `main(event, stdinData)`，分发 5 个事件（post-tool-use / pre-tool-use-read / post-tool-use-any / stop / session-start），支持直接运行
+- `scripts/node-runner.mjs`: Hook 运行时入口，被 `hooks.json` 调用，处理 Stop 的 `shouldBlock` → `exit(2)`
+- `scripts/setup-check.mjs`: Setup Hook 入口（仅 `--init`/`--init-only`/`--maintenance` 特殊触发），环境检测 + `ensureWatcherRunning` 保活
+- `scripts/watcher.mjs`: watcher 常驻进程入口，由 hook 保活接线 detached spawn
 
 **配置:**
-- `plugin/src/config.mjs`: 阈值（WARN=3 / BLOCK=5）、数据目录、watcher 参数（WINDOW=20 / THRESHOLD=5 / SCAN=5000ms / STALE=30000ms）
+- `src/config.mjs`: 阈值（WARN=3 / BLOCK=5）、数据目录、watcher 参数（WINDOW=20 / THRESHOLD=5 / SCAN=5000ms / STALE=30000ms）
 - `package.json`: 项目元数据、`scripts.test = "vitest run"`、`vitest` devDep
-- `plugin/.claude-plugin/plugin.json`: 插件元数据
-- `plugin/hooks/hooks.json`: Hook 注册（record 格式，6 个 hook entry）
+- `.claude-plugin/plugin.json`: 插件元数据
+- `hooks/hooks.json`: Hook 注册（record 格式，6 个 hook entry）
 - `vitest.config.mjs`: Vitest 配置
 
 **核心逻辑:**
-- 主 agent 线：`plugin/src/handlers.mjs`（PostToolUse 检测 + PreToolUse 阻断）、`plugin/src/state.mjs`（计数器）
-- 子 agent 线：`plugin/src/watcher.mjs`（扫描协调）、`deadLoopDetector.mjs`（算法）、`alertStore.mjs`（告警）、`hookInjector.mjs`（注入）、`subagentTranscriptReader.mjs`（jsonl 解析）、`watcherLifecycle.mjs`（进程管理）
-- 共享：`plugin/src/utils.mjs`（sanitizeName、getProjectName）
-- 补充缓解：`plugin/src/notifier.mjs`（活跃死循环桌面通知）、`plugin/src/sessionStartAdvice.mjs`（SessionStart 注入引导后台子代理）
+- 主 agent 线：`src/handlers.mjs`（PostToolUse 检测 + PreToolUse 阻断）、`src/state.mjs`（计数器）
+- 子 agent 线：`src/watcher.mjs`（扫描协调）、`deadLoopDetector.mjs`（算法）、`alertStore.mjs`（告警）、`hookInjector.mjs`（注入）、`subagentTranscriptReader.mjs`（jsonl 解析）、`watcherLifecycle.mjs`（进程管理）
+- 共享：`src/utils.mjs`（sanitizeName、getProjectName）
+- 补充缓解：`src/notifier.mjs`（活跃死循环桌面通知）、`src/sessionStartAdvice.mjs`（SessionStart 注入引导后台子代理）
 
 **测试:**
 - `tests/state.test.mjs`、`tests/handlers.test.mjs`、`tests/integration.test.mjs`
@@ -121,8 +120,8 @@ cc-break-dead-loop/
 - 文档文件: `YYYY-MM-DD-*.md`（plans / brainstorms 目录）
 
 **目录:**
-- `plugin/src/`（扁平，13 文件，无子目录）
-- `plugin/`（`.claude-plugin/`、`hooks/`、`scripts/`、`src/`）
+- `src/`（扁平，13 文件，无子目录）
+- `.claude-plugin/`、`hooks/`、`scripts/`（插件运行时，必须位于仓库根）
 - `tests/`（扁平）
 - `docs/`（按类型分类）
 
@@ -135,31 +134,31 @@ cc-break-dead-loop/
 ## 新增代码位置
 
 **新 Handler / Hook 事件:**
-- Handler: `plugin/src/handlers.mjs` 或 `plugin/src/index.mjs`（注入类）
-- 入口分发: `plugin/src/index.mjs`（`main()` switch 添加 case）
-- Hook 注册: `plugin/hooks/hooks.json`
-- Runner: `plugin/scripts/node-runner.mjs`（如需新 event 参数）
+- Handler: `src/handlers.mjs` 或 `src/index.mjs`（注入类）
+- 入口分发: `src/index.mjs`（`main()` switch 添加 case）
+- Hook 注册: `hooks/hooks.json`
+- Runner: `scripts/node-runner.mjs`（如需新 event 参数）
 - Tests: `tests/handlers.test.mjs` + `tests/integration.test.mjs`
 
 **新 watcher 检测能力:**
-- 算法: `plugin/src/deadLoopDetector.mjs`
-- 扫描协调: `plugin/src/watcher.mjs`
+- 算法: `src/deadLoopDetector.mjs`
+- 扫描协调: `src/watcher.mjs`
 - Tests: `tests/deadLoopDetector.test.mjs`、`tests/watcher.test.mjs`
 
 **新状态/告警存储:**
-- 实现: `plugin/src/state.mjs` 或 `plugin/src/alertStore.mjs`
+- 实现: `src/state.mjs` 或 `src/alertStore.mjs`
 - Tests: 对应 `tests/*.test.mjs`
 
 **新配置常量:**
-- `plugin/src/config.mjs`，消费处相应模块
+- `src/config.mjs`，消费处相应模块
 
 ## 特殊目录
 
-**`plugin/`:**
+**`.claude-plugin/`、`hooks/`、`scripts/`（插件运行时）:**
 - Purpose: Claude Code 插件安装包内容
 - Generated: No
 - Committed: Yes（插件分发核心）
-- Note: 安装时复制到 `~/.claude/plugins/marketplaces/<owner>/plugin/`，`hooks.json` 用 `${CLAUDE_PLUGIN_ROOT}` 解析根目录
+- Note: Claude Code 只从仓库根读取 `.claude-plugin/plugin.json` 与 `hooks/hooks.json`，埋在子目录会导致插件以「已启用但零 hook 生效」的静默方式失效（`claude plugin details` 显示 `Version: unknown` / `Hooks (0)`）。`hooks.json` 用 `${CLAUDE_PLUGIN_ROOT}` 解析根目录
 
 **`~/.data/cc-break-dead-loop/`（运行时生成）:**
 - Purpose: 插件运行时状态/告警/进程数据

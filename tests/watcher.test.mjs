@@ -3,8 +3,8 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createWatcher } from '../plugin/src/watcher.mjs';
-import { getAlertsForSession, addAlert } from '../plugin/src/alertStore.mjs';
+import { createWatcher } from '../src/watcher.mjs';
+import { getAlertsForSession, addAlert } from '../src/alertStore.mjs';
 
 /** 构造 assistant tool_use 行（可选 timestamp） */
 function assistantLine(toolName, input, timestamp) {

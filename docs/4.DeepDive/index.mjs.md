@@ -2,10 +2,10 @@
 
 ## 概述
 
-`plugin/src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、5 事件分发、watcher 保活接线、Stop 阻断、统一错误边界。它被两处调用：
+`src/index.mjs` 是整个插件的**单一入口点**，负责 stdin 解析、5 事件分发、watcher 保活接线、Stop 阻断、统一错误边界。它被两处调用：
 
-1. **模块入口**：`import { main } from '../src/index.mjs'`（由 `plugin/scripts/node-runner.mjs` 使用）
-2. **CLI 入口**：`node plugin/src/index.mjs <event>`（开发调试用）
+1. **模块入口**：`import { main } from '../src/index.mjs'`（由 `scripts/node-runner.mjs` 使用）
+2. **CLI 入口**：`node src/index.mjs <event>`（开发调试用）
 
 ## 职责
 

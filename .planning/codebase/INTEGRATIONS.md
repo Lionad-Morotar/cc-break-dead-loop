@@ -15,7 +15,7 @@
 - 本地 Git 命令 — 用于解析项目仓库名（`git remote get-url origin`）
   - 调用方式：`spawnSync('git', ['remote', 'get-url', 'origin'], { cwd, encoding: 'utf8', timeout: 5000 })`
   - 完全可选：Git 不可用时自动 fallback 到当前工作目录文件夹名
-  - 使用文件：`plugin/src/utils.mjs`
+  - 使用文件：`src/utils.mjs`
 
 ## Data Storage
 
@@ -25,10 +25,10 @@
 **File Storage：**
 - 本地文件系统 — 状态/告警/进程数据以 JSON 文件形式持久化
   - 根目录：`~/.data/cc-break-dead-loop/`（可由 `CC_BREAK_DATA_DIR` 覆盖）
-  - 主 agent 计数：`<safe-project-name>/<session-id>/<safe-agent-name>/state.json`（`plugin/src/state.mjs`）
-  - 子 agent 告警：`alerts.json`（`{ version: 1, alerts: [...] }`，`plugin/src/alertStore.mjs`，watcher 写 / hooks 读）
-  - watcher 心跳：`watcher-heartbeat.json`（`{ pid, ts }`，`plugin/src/watcher.mjs`）
-  - watcher PID：`watcher.pid`（`plugin/src/watcherLifecycle.mjs`，重启时 kill 旧进程）
+  - 主 agent 计数：`<safe-project-name>/<session-id>/<safe-agent-name>/state.json`（`src/state.mjs`）
+  - 子 agent 告警：`alerts.json`（`{ version: 1, alerts: [...] }`，`src/alertStore.mjs`，watcher 写 / hooks 读）
+  - watcher 心跳：`watcher-heartbeat.json`（`{ pid, ts }`，`src/watcher.mjs`）
+  - watcher PID：`watcher.pid`（`src/watcherLifecycle.mjs`，重启时 kill 旧进程）
   - 写入策略：原子写入（`writeFile(tmp) → rename(tmp, dest)`）避免并发损坏
 - subagent transcript（只读输入）：`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`（Claude Code 生成，watcher 扫描）
 

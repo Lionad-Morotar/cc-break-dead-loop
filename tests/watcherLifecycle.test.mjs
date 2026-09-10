@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { decideAction } from '../plugin/src/watcherLifecycle.mjs';
+import { decideAction } from '../src/watcherLifecycle.mjs';
 
 describe('WatcherLifecycle decideAction', () => {
   let heartbeatFile;

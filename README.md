@@ -136,7 +136,7 @@ npx vitest run tests/integration.test.mjs
 npx vitest -t "sanitizeName"
 
 # 手动模拟 Hook 输入
-echo '{"tool_name":"Read","tool_input":{"file_path":"/a/b"},"tool_response":"Wasted call","session_id":"s","agent_id":"a","cwd":"/tmp"}' | node plugin/src/index.mjs post-tool-use
+echo '{"tool_name":"Read","tool_input":{"file_path":"/a/b"},"tool_response":"Wasted call","session_id":"s","agent_id":"a","cwd":"/tmp"}' | node src/index.mjs post-tool-use
 ```
 
 ### 使用 CLAUDE_PLUGIN_ROOT 环境变量
@@ -149,7 +149,7 @@ export CLAUDE_PLUGIN_ROOT=/path/to/cc-break-dead-loop
 
 ## 配置
 
-当前阈值固定为（见 `plugin/src/config.mjs`）：
+当前阈值固定为（见 `src/config.mjs`）：
 
 **线 1（主 agent Read）：**
 - **3 次重复**：注入警告（additionalContext）
@@ -188,30 +188,31 @@ watcher 扫描的 subagent transcript 位于 `~/.claude/projects/<project>/<sess
 
 ```
 cc-break-dead-loop/
-├── plugin/
-│   ├── .claude-plugin/
-│   │   └── plugin.json    # 插件元数据
-│   ├── hooks/
-│   │   └── hooks.json     # Hook 注册（Setup + SessionStart + PostToolUse[Read+*] + PreToolUse[Read] + Stop）
-│   ├── scripts/
-│   │   ├── node-runner.mjs   # Hook 运行时（stdin 收集、Stop exit 2、graceful fallback）
-│   │   ├── setup-check.mjs   # 环境检测 + 启动/保活 watcher
-│   │   └── watcher.mjs       # watcher 常驻进程入口（detached spawn）
-│   └── src/               # 核心源码（13 模块）
-│       ├── index.mjs               # Hook 入口（5 事件分发、Stop 阻断）
-│       ├── config.mjs              # 阈值 + 数据目录 + watcher 参数常量
-│       ├── handlers.mjs            # 线 1：PostToolUse:Read + PreToolUse:Read
-│       ├── state.mjs               # 线 1：主 agent 计数状态（原子写入）
-│       ├── utils.mjs               # 路径安全化 + Git 仓库名解析
-│       ├── watcher.mjs             # 线 2：扫描协调（transcript → 检测 → 告警同步）
-│       ├── watcherLifecycle.mjs    # 线 2：watcher 进程决策与 spawn
-│       ├── alertStore.mjs          # 线 2：告警存储（watcher 写 / hooks 读）
-│       ├── deadLoopDetector.mjs    # 线 2：死循环检测算法（稳定序列化指纹）
-│       ├── hookInjector.mjs        # 线 2：Hook 注入措辞生成
-│       ├── notifier.mjs            # 桌面通知（活跃死循环提醒用户手动中断）
-│       ├── sessionStartAdvice.mjs  # SessionStart 注入（引导后台子代理）
-│       └── subagentTranscriptReader.mjs # 线 2：subagent jsonl 解析
-├── tests/                # 测试套件（17 文件，160 用例，Vitest）
+├── .claude-plugin/
+│   └── plugin.json        # 插件元数据（Claude Code 只从仓库根读取，见「已知限制」）
+├── hooks/
+│   └── hooks.json         # Hook 注册（Setup + SessionStart + PostToolUse[Read+*] + PreToolUse[Read] + Stop）
+├── scripts/
+│   ├── node-runner.mjs    # Hook 运行时（stdin 收集、Stop exit 2、graceful fallback）
+│   ├── setup-check.mjs    # 环境检测 + 启动/保活 watcher
+│   └── watcher.mjs        # watcher 常驻进程入口（detached spawn）
+├── src/                   # 核心源码（13 模块）
+│   ├── index.mjs               # Hook 入口（5 事件分发、Stop 阻断）
+│   ├── config.mjs              # 阈值 + 数据目录 + watcher 参数常量
+│   ├── handlers.mjs            # 线 1：PostToolUse:Read + PreToolUse:Read
+│   ├── state.mjs               # 线 1：主 agent 计数状态（原子写入）
+│   ├── utils.mjs               # 路径安全化 + Git 仓库名解析
+│   ├── watcher.mjs             # 线 2：扫描协调（transcript → 检测 → 告警同步）
+│   ├── watcherLifecycle.mjs    # 线 2：watcher 进程决策与 spawn
+│   ├── alertStore.mjs          # 线 2：告警存储（watcher 写 / hooks 读）
+│   ├── deadLoopDetector.mjs    # 线 2：死循环检测算法（稳定序列化指纹）
+│   ├── hookInjector.mjs        # 线 2：Hook 注入措辞生成
+│   ├── notifier.mjs            # 桌面通知（活跃死循环提醒用户手动中断）
+│   ├── sessionStartAdvice.mjs  # SessionStart 注入（引导后台子代理）
+│   └── subagentTranscriptReader.mjs # 线 2：subagent jsonl 解析
+├── packages/claude-plugins/  # 中心集市仓库（submodule，唯一安装入口）
+├── docs/                 # 项目文档
+├── tests/                # 测试套件（12 文件，136 用例，Vitest）
 ├── vitest.config.mjs     # Vitest 配置
 ├── pnpm-lock.yaml
 └── package.json
@@ -236,3 +237,4 @@ cc-break-dead-loop/
 - **watcher 检测有延迟**：扫描间隔 5s + transcript 落盘延迟，子 agent 死循环最快在数秒后被发现。
 - **每个 subagent 独立计数**：线 1 计数器按 agent 隔离，无法跨 agent 累计。
 - **主 agent 场景下 deny 完全有效**：线 1 的 deny + additionalContext 双重机制确保主 agent 被可靠阻断。
+- **插件根必须等于仓库根**：Claude Code 只在仓库根查找 `.claude-plugin/plugin.json` 与 `hooks/hooks.json`，埋进子目录会让插件以「已启用但零 hook 生效」的静默方式失效——watcher 照常运行、告警照常写入，但没有任何 hook 去消费它。自查方式：`claude plugin details cc-break-dead-loop@lionad-morotar`，出现 `Version: unknown` + `Hooks (0)` 即为此故障。

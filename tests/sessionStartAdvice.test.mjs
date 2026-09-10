@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert';
-import { buildSessionStartAdvice } from '../plugin/src/sessionStartAdvice.mjs';
+import { buildSessionStartAdvice } from '../src/sessionStartAdvice.mjs';
 
 describe('sessionStartAdvice', () => {
   const advice = buildSessionStartAdvice();

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert';
-import { notifyDeadLoop, notifyWatcherRevived } from '../plugin/src/notifier.mjs';
+import { notifyDeadLoop, notifyWatcherRevived } from '../src/notifier.mjs';
 
 describe('notifier', () => {
   it('darwin → 调 osascript display notification，含 agentType/toolName/repeatCount', () => {

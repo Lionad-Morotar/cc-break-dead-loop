@@ -83,8 +83,8 @@ try {
 ```
 
 **多层错误边界:**
-- 第一层：`plugin/src/index.mjs` 的 `main()` 函数 try/catch（JSON 解析 + handler 调用）
-- 第二层：`plugin/scripts/node-runner.mjs` 的 `finish()` 函数 try/catch（含 Stop `shouldBlock` 处理）
+- 第一层：`src/index.mjs` 的 `main()` 函数 try/catch（JSON 解析 + handler 调用）
+- 第二层：`scripts/node-runner.mjs` 的 `finish()` 函数 try/catch（含 Stop `shouldBlock` 处理）
 - 第三层：CLI 入口的 `process.stdin.on('error', ...)`
 - watcher 层：`watcher.mjs` / `watcherLifecycle.mjs` 内部 try/catch，扫描异常跳过损坏 jsonl；watcher 崩溃由心跳过期 + 下次 Setup `decideAction → restart` 自动恢复
 - Setup 层：`setup-check.mjs` watcher 启动失败仅 `console.error`，永不阻断 Claude Code（`exit(0)`）

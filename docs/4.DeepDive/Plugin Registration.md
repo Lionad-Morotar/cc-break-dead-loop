@@ -2,12 +2,32 @@
 
 ## 概述
 
-Claude Code 插件通过 `plugin/` 目录下的配置文件注册到 Hook 引擎。本插件注册 **6 个 hook entry**，覆盖两条检测线：线 1（主 agent Read）+ 线 2（子 agent 工具死循环）。
+Claude Code 只从**插件仓库根目录**读取 `.claude-plugin/plugin.json`（元数据）和 `hooks/hooks.json`（Hook 注册），两者埋在子目录里等于插件完全没生效。本插件注册 **6 个 hook entry**，覆盖两条检测线：线 1（主 agent Read）+ 线 2（子 agent 工具死循环）。
+
+## 目录布局约束
+
+插件根 = 仓库根。Cache 目录名即证据：CC 读到 manifest 时用其中的 `version` 命名缓存目录，读不到时退化为 commit hash 前缀。
+
+```
+~/.claude/plugins/cache/<marketplace>/<plugin>/
+├── 0.3.3/          ← 读到 plugin.json，版本号命名
+└── 8e6224c69693/   ← 读不到，退化为主仓 commit 前缀（故障态）
+```
+
+对照验证方式：
+
+```bash
+claude plugin details <plugin>@<marketplace>
+# 正常：Version 0.3.2 / Hooks (5) Setup, PostToolUse, PreToolUse, Stop, SessionStart
+# 失效：Version unknown / Hooks (0)
+```
+
+`Version: unknown` + `Hooks (0)` 是 manifest 未被解析的确诊特征，此时插件处于「已启用但零生效」状态——watcher 若曾由手工启动仍会照常写 `alerts.json`，但消费告警的 hook 从未注册，死循环照常发生却无人拦截。
 
 ## 文件结构
 
 ```
-plugin/
+cc-break-dead-loop/                    # 插件根 = 仓库根
 ├── .claude-plugin/
 │   └── plugin.json                    # 插件元数据
 ├── hooks/
@@ -37,7 +57,7 @@ plugin/
 ```json
 {
   "name": "cc-break-dead-loop",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Claude Code 插件：双线死循环防护 —— 主 agent 连续 Read 同一未改动文件（双 Hook 拦截）+ 子 agent 工具调用死循环（watcher 常驻进程扫描，引导主 agent 调 TaskStopTool 终止）",
   "author": { "name": "仿生狮子" },
   "license": "MIT",

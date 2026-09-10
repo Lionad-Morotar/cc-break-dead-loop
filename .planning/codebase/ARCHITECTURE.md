@@ -19,95 +19,95 @@
 
 **插件注册层（Plugin Registration）:**
 - Purpose: 向 Claude Code 注册 Hook，定义触发条件与执行命令
-- Location: `plugin/hooks/hooks.json`
+- Location: `hooks/hooks.json`
 - Contains: 6 个 hook entry — Setup、SessionStart、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
 - Used by: Claude Code 运行时
 
 **Runner 层:**
 - Purpose: 收集 stdin，调用核心逻辑，透传 JSON 响应，处理 Stop 阻断（exit 2 + stderr），graceful fallback
-- Location: `plugin/scripts/node-runner.mjs`
-- Depends on: `plugin/src/index.mjs`
+- Location: `scripts/node-runner.mjs`
+- Depends on: `src/index.mjs`
 
 **入口/分发层（Entry）:**
 - Purpose: stdin/stdout 协议处理、5 事件分发、watcher 保活接线、统一错误边界
-- Location: `plugin/src/index.mjs`
+- Location: `src/index.mjs`
 - Contains: `main(event, stdinData)`、`postToolUseAnyAlert`、`stopAlert`、`sessionStartAdvice`、`ensureWatcherAlive`、直接执行入口
 - Depends on: `handlers.mjs`、`hookInjector.mjs`、`config.mjs`
 
 **主 Agent Handler 层:**
 - Purpose: 主 agent Read 死循环的检测与拦截
-- Location: `plugin/src/handlers.mjs`
+- Location: `src/handlers.mjs`
 - Contains: `postToolUse`（计数）、`preToolUseRead`（警告/阻断）、`isWastedCall`（多模式检测）
 - Depends on: `state.mjs`、`config.mjs`
 
 **状态管理层（主 Agent）:**
 - Purpose: 主 agent Read 计数持久化、原子写入、参数比较
-- Location: `plugin/src/state.mjs`
+- Location: `src/state.mjs`
 - Depends on: `config.mjs`、`utils.mjs`
 
 **Watcher 进程层:**
 - Purpose: 常驻后台进程，定时扫描 subagent transcript，检测子 agent 死循环，同步告警
-- Location: `plugin/scripts/watcher.mjs`（入口）+ `plugin/src/watcher.mjs`（核心 `createWatcher`）
+- Location: `scripts/watcher.mjs`（入口）+ `src/watcher.mjs`（核心 `createWatcher`）
 - Contains: `findAllAgentJsonls`、`scanOnce`（全量重算 + 增量同步告警）、`start`/`stop`、心跳写入
 - Depends on: `subagentTranscriptReader.mjs`、`deadLoopDetector.mjs`、`alertStore.mjs`、`config.mjs`
 
 **Watcher 生命周期层:**
 - Purpose: 决策 watcher 是否需要（重）启动，执行 detached spawn / kill 旧进程
-- Location: `plugin/src/watcherLifecycle.mjs`
+- Location: `src/watcherLifecycle.mjs`
 - Contains: `decideAction`（纯决策：读心跳判断新鲜度 → none/start/restart）、`ensureWatcherRunning`（执行层）、`killOldProcess`
 - Depends on: `config.mjs`
-- Used by: `plugin/scripts/setup-check.mjs`
+- Used by: `scripts/setup-check.mjs`
 
 **死循环检测算法层:**
 - Purpose: 给定 tool_use 序列，判定尾部是否构成死循环
-- Location: `plugin/src/deadLoopDetector.mjs`
+- Location: `src/deadLoopDetector.mjs`
 - Contains: `detectDeadLoop`（尾部连续重复计数）、`stableStringify`（对象键排序序列化，生成参数指纹）
 - Pure function，无副作用
 
 **Transcript 解析层:**
 - Purpose: 从 subagent jsonl 提取最近 N 个 tool_use
-- Location: `plugin/src/subagentTranscriptReader.mjs`
+- Location: `src/subagentTranscriptReader.mjs`
 - Contains: `readRecentToolCalls`（解析容错：跳过非 assistant 行、解析失败行、无 tool_use 行）
 
 **告警存储层:**
 - Purpose: 子 agent 死循环告警的共享状态（watcher 写 / hooks 读）
-- Location: `plugin/src/alertStore.mjs`
+- Location: `src/alertStore.mjs`
 - Contains: `addAlert`（upsert by taskId）、`removeAlert`、`getAlertsForSession`、原子写入
 - 多 session 通过 `sessionId` 字段过滤隔离，单文件存储
 
 **Hook 注入层:**
 - Purpose: 读告警，生成 hook 响应（additionalContext / blockingError），纯语义不关心协议细节
-- Location: `plugin/src/hookInjector.mjs`
+- Location: `src/hookInjector.mjs`
 - Contains: `buildInjection`、`postToolUseMessage`、`stopMessage`、`pickMostSevere`
 - Depends on: `alertStore.mjs`
-- Used by: `plugin/src/index.mjs`（post-tool-use-any / stop 事件）
+- Used by: `src/index.mjs`（post-tool-use-any / stop 事件）
 
 **桌面通知层:**
 - Purpose: 活跃死循环时发系统通知，提醒用户手动中断前台子代理（架构死结下够不到主 agent 就够用户）
-- Location: `plugin/src/notifier.mjs`
+- Location: `src/notifier.mjs`
 - Contains: `notifyDeadLoop`（darwin osascript / linux notify-send，失败静默，依赖注入 exec/platform 便于测试）
-- Used by: `plugin/src/watcher.mjs`
+- Used by: `src/watcher.mjs`
 
 **SessionStart 注入层:**
 - Purpose: 会话启动时注入子代理使用建议，引导主 agent 优先用后台子代理（预防性劝说）
-- Location: `plugin/src/sessionStartAdvice.mjs`
+- Location: `src/sessionStartAdvice.mjs`
 - Contains: `buildSessionStartAdvice`
-- Used by: `plugin/src/index.mjs`（session-start 事件）
+- Used by: `src/index.mjs`（session-start 事件）
 
 **配置层:**
 - Purpose: 阈值、数据目录、watcher 参数常量
-- Location: `plugin/src/config.mjs`
+- Location: `src/config.mjs`
 - Exports: `WARN_THRESHOLD`(3)、`BLOCK_THRESHOLD`(5)、`DATA_DIR`、`CLAUDE_CONFIG_DIR`、`PROJECTS_DIR`、`ALERTS_FILE`、`HEARTBEAT_FILE`、`PID_FILE`、`WATCHER_WINDOW_SIZE`(20)、`WATCHER_THRESHOLD`(5)、`WATCHER_SCAN_INTERVAL_MS`(5000)、`WATCHER_STALE_TIMEOUT_MS`(30000)
 
 ## 数据流
 
 **保活流（任意 Hook 事件）:**
 
-1. SessionStart（matcher `*`）/ Stop / PostToolUse:`*` hook 触发，`plugin/src/index.mjs` 的 `ensureWatcherAlive` 调用 `ensureWatcherRunning`；`Setup` Hook（`setup-check.mjs`，含 Node.js >= 18 检测）仅 `--init`/`--init-only`/`--maintenance` 特殊触发时接线
+1. SessionStart（matcher `*`）/ Stop / PostToolUse:`*` hook 触发，`src/index.mjs` 的 `ensureWatcherAlive` 调用 `ensureWatcherRunning`；`Setup` Hook（`setup-check.mjs`，含 Node.js >= 18 检测）仅 `--init`/`--init-only`/`--maintenance` 特殊触发时接线
 2. 读 `watcher-heartbeat.json` → `decideAction`：
    - 心跳新鲜（`now - ts <= 30s`）→ `none`（不重启，保活检查开销仅一次文件读取）
    - 心跳过期/缺失 → `start`/`restart`（`restart` 时按 `watcher.pid` kill 旧进程并发复活桌面通知）
-3. detached spawn `plugin/scripts/watcher.mjs`（`stdio: 'ignore'`，`unref`），写新 PID
+3. detached spawn `scripts/watcher.mjs`（`stdio: 'ignore'`，`unref`），写新 PID
 4. 保活失败静默吞掉，绝不阻断 hook 主流程
 
 **Watcher 扫描流（常驻进程，每 5s）:**
@@ -177,23 +177,23 @@
 ## 入口点
 
 **Plugin Hook Entry:**
-- Location: `plugin/hooks/hooks.json`
+- Location: `hooks/hooks.json`
 - Triggers: Setup（仅 --init/--init-only/--maintenance 特殊触发）、SessionStart[`*`]、PostToolUse[Read]、PostToolUse[`*`]、PreToolUse[Read]、Stop
 
 **直接执行入口:**
-- Location: `plugin/src/index.mjs`（`import.meta.url === file://...` 分支）
+- Location: `src/index.mjs`（`import.meta.url === file://...` 分支）
 - 从 stdin 读取，调用 `main()`，Stop 阻断时 `exit(2)`
 
 **Runner Entry（Hook 脚本）:**
-- Location: `plugin/scripts/node-runner.mjs`
+- Location: `scripts/node-runner.mjs`
 - 收集 stdin（5s 超时），调用 `main()`，处理 `shouldBlock` → `exit(2)`，异常降级
 
 **Setup Entry:**
-- Location: `plugin/scripts/setup-check.mjs`
+- Location: `scripts/setup-check.mjs`
 - 检测 Node.js + 启动/保活 watcher，永不阻断（`exit(0)`）
 
 **Watcher Process Entry:**
-- Location: `plugin/scripts/watcher.mjs`
+- Location: `scripts/watcher.mjs`
 - detached spawn，立即扫描 + 定时扫描，`process.stdin.resume()` 保持存活，SIGTERM/SIGINT 优雅退出
 
 ## 错误处理

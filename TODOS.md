@@ -9,7 +9,7 @@
 **Pros:** 适应不同用户的工作流习惯；无需修改代码即可调整行为。
 **Cons:** 需要配置文件解析逻辑和默认值处理。
 
-**Context:** 当前 `plugin/src/config.mjs` 中硬编码 `WARN_THRESHOLD = 3` 和 `BLOCK_THRESHOLD = 5`。预期通过 `~/.config/cc-break-dead-loop/config.json` 或环境变量覆盖。
+**Context:** 当前 `src/config.mjs` 中硬编码 `WARN_THRESHOLD = 3` 和 `BLOCK_THRESHOLD = 5`。预期通过 `~/.config/cc-break-dead-loop/config.json` 或环境变量覆盖。
 
 **Depends on:** 无（可在任何时间实现）。
 

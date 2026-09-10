@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { addAlert, removeAlert, getAlertsForSession } from '../plugin/src/alertStore.mjs';
+import { addAlert, removeAlert, getAlertsForSession } from '../src/alertStore.mjs';
 
 describe('AlertStore', () => {
   let alertsFile;
