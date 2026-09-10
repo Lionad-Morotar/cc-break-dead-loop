@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-10
+
+### Fixed
+
+- 恢复被 Claude Code 加载的插件 hook：`.claude-plugin/` 与 `hooks/` 从 `plugin/` 子目录提升到仓库根。Claude Code 只在插件仓库根读取 manifest 与 hook 注册，此前埋于子目录导致 manifest 从未被解析，插件以「已启用但零 hook 生效」的静默方式失效：watcher 照常扫描并写 `alerts.json`，但消费告警的 PostToolUse/Stop hook 从未注册，子 agent 死循环无人拦截。自查方式：`claude plugin details cc-break-dead-loop@lionad-morotar` 出现 `Version: unknown` / `Hooks (0)` 即为此故障。
+
 ## [0.3.2] - 2026-09-06
 
 ### Fixed
